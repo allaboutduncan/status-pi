@@ -1,0 +1,6 @@
+# The scripts and unit file in here run on Linux; a CRLF shebang would break
+# them with "bad interpreter". Keep everything textual at LF in the working
+# copy, whichever machine it is checked out on.
+* text=auto eol=lf
+*.png binary
+*.dtbo binary

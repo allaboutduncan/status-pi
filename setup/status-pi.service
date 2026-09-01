@@ -1,0 +1,36 @@
+[Unit]
+Description=status-pi wall status board
+Documentation=https://github.com/phillipduncan/status-pi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=status-pi
+Group=status-pi
+# video: write to /dev/fb1
+SupplementaryGroups=video
+Environment=PYTHONUNBUFFERED=1
+Environment=STATUS_PI_CONFIG=/etc/status-pi/config.yaml
+Environment=STATUS_PI_STATE_DIR=/var/lib/status-pi
+ExecStart=/opt/status-pi/venv/bin/python -m status_pi
+WorkingDirectory=/opt/status-pi
+Restart=always
+RestartSec=5
+# The tick loop pings the watchdog at least once a second.
+WatchdogSec=30
+StateDirectory=status-pi
+ConfigurationDirectory=status-pi
+# Bind :80 without running as root (set web.port to 80 in config.yaml to use it)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/status-pi /etc/status-pi
+DeviceAllow=/dev/fb1 rw
+DeviceAllow=/dev/fb0 rw
+
+[Install]
+WantedBy=multi-user.target

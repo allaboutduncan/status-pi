@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d10">
+<title>status-pi</title>
+<style>
+  :root {
+    --bg: #0b0d10; --panel: #14171c; --line: #232830; --text: #e8ebef;
+    --muted: #8b93a1; --busy: #ff2a20; --free: #2ee660; --amber: #ffb020;
+    --blue: #50beff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 16px; max-width: 620px; margin-inline: auto;
+  }
+  h1 { font-size: 15px; letter-spacing: .18em; text-transform: uppercase;
+       color: var(--muted); font-weight: 600; margin: 0 0 14px; }
+  section { background: var(--panel); border: 1px solid var(--line);
+            border-radius: 12px; padding: 14px; margin-bottom: 14px; }
+  h2 { font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+       color: var(--muted); margin: 0 0 12px; font-weight: 600; }
+  img#preview { width: 100%; border-radius: 8px; display: block;
+                background: #000; aspect-ratio: 3 / 2; }
+  .health { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px;
+            font-size: 13px; color: var(--muted); }
+  .health b { color: var(--text); font-weight: 500; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+         margin-right: 6px; background: var(--muted); vertical-align: middle; }
+  .dot.ok { background: var(--free); } .dot.bad { background: var(--busy); }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input, select { width: 100%; padding: 10px; border-radius: 8px;
+    border: 1px solid var(--line); background: #0e1116; color: var(--text);
+    font: inherit; }
+  input:focus, select:focus { outline: 2px solid #2b3a4d; border-color: #2b3a4d; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 120px; }
+  button { padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line);
+    background: #1b1f26; color: var(--text); font: inherit; cursor: pointer; }
+  button:hover { background: #232833; }
+  button.primary { background: #1d3f5c; border-color: #2a5a82; }
+  button.danger { background: #3a1a18; border-color: #6a2a26; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .chips button { flex: 0 0 auto; padding: 8px 12px; font-size: 13px; }
+  .countdown { font-size: 34px; font-variant-numeric: tabular-nums;
+               letter-spacing: .04em; margin: 4px 0 10px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .events { list-style: none; padding: 0; margin: 0; font-size: 13px; }
+  .events li { display: flex; justify-content: space-between; gap: 10px;
+    padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .events li:last-child { border-bottom: 0; }
+  .events time { color: var(--muted); white-space: nowrap; }
+  .events .hide { background: none; border: 0; color: var(--muted);
+                  cursor: pointer; padding: 0 4px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px;
+                    letter-spacing: .16em; text-transform: uppercase; }
+  .ok-flash { animation: flash 1s ease-out; }
+  @keyframes flash { from { border-color: var(--free); } to { border-color: var(--line); } }
+  .warn { color: var(--amber); font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<h1>status-pi</h1>
+
+<section>
+  <h2>Now</h2>
+  <img id="preview" alt="live view of the panel">
+  <div class="health">
+    <span><span class="dot" id="ha-dot"></span>Home Assistant <b id="ha-text">--</b></span>
+    <span><span class="dot" id="cal-dot"></span>Calendar <b id="cal-text">--</b></span>
+  </div>
+  <div class="warn" id="warnings" hidden></div>
+</section>
+
+<section>
+  <h2>Custom status</h2>
+  <input id="status-text" maxlength="24" placeholder="DEEP WORK" autocomplete="off">
+  <div class="row">
+    <div>
+      <label for="status-color">Colour</label>
+      <select id="status-color">
+        <option value="amber">Amber</option>
+        <option value="red">Red</option>
+        <option value="green">Green</option>
+        <option value="blue">Blue</option>
+        <option value="white">White</option>
+      </select>
+    </div>
+    <div>
+      <label for="status-minutes">Expires after</label>
+      <select id="status-minutes">
+        <option value="">Until I clear it</option>
+        <option value="30">30 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="120">2 hours</option>
+        <option value="480">End of day</option>
+      </select>
+    </div>
+  </div>
+  <div class="chips">
+    <button class="primary" onclick="setStatus()">Set status</button>
+    <button onclick="clearStatus()">Clear</button>
+  </div>
+  <p class="hint">Up to 10 characters stay still on the panel; longer text scrolls.
+     An active microphone still overrides this with BUSY.</p>
+</section>
+
+<section>
+  <h2>Timer</h2>
+  <div class="countdown" id="countdown">--:--</div>
+  <div class="chips">
+    <button onclick="startTimer(300)">5 min</button>
+    <button onclick="startTimer(600)">10 min</button>
+    <button onclick="startTimer(900)">15 min</button>
+    <button onclick="startTimer(1500)">25 min</button>
+    <button onclick="startTimer(3600)">1 hour</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <input id="timer-minutes" type="number" min="1" max="1440" placeholder="minutes">
+    <input id="timer-label" maxlength="24" placeholder="label (optional)">
+  </div>
+  <div class="chips">
+    <button class="primary" onclick="startCustomTimer()">Start</button>
+    <button onclick="timerAction('pause')">Pause</button>
+    <button onclick="timerAction('resume')">Resume</button>
+    <button class="danger" onclick="timerAction('stop')">Stop</button>
+  </div>
+</section>
+
+<section>
+  <h2>Upcoming</h2>
+  <ul class="events" id="events"><li>Loading...</li></ul>
+  <div class="chips">
+    <button onclick="post('/api/calendar/refresh')">Refresh feed</button>
+  </div>
+  <p class="hint" id="cal-age"></p>
+</section>
+
+<section>
+  <details id="settings-panel">
+    <summary>Settings</summary>
+    <label for="cfg-tz">Timezone</label>
+    <input id="cfg-tz" placeholder="Europe/London">
+
+    <h2 style="margin-top:18px">Home Assistant</h2>
+    <label for="cfg-ha-url">Base URL</label>
+    <input id="cfg-ha-url" placeholder="http://homeassistant.local:8123">
+    <label for="cfg-ha-token">Long-lived access token</label>
+    <input id="cfg-ha-token" type="password" placeholder="leave blank to keep">
+    <label for="cfg-ha-entity">Camera / microphone entity</label>
+    <input id="cfg-ha-entity" placeholder="binary_sensor.work_camera">
+    <label for="cfg-ha-states">States that mean busy (comma separated)</label>
+    <input id="cfg-ha-states" placeholder="on">
+
+    <h2 style="margin-top:18px">Calendar</h2>
+    <label for="cfg-ics">Secret iCal URL</label>
+    <input id="cfg-ics" type="password" placeholder="leave blank to keep">
+    <label for="cfg-email">Your email (for accepted-only filtering)</label>
+    <input id="cfg-email" placeholder="you@example.com">
+    <div class="row">
+      <div>
+        <label for="cfg-refresh">Refresh every (seconds)</label>
+        <input id="cfg-refresh" type="number" min="60" max="3600">
+      </div>
+      <div>
+        <label for="cfg-lookahead">Look ahead (hours)</label>
+        <input id="cfg-lookahead" type="number" min="1" max="36">
+      </div>
+    </div>
+    <label><input type="checkbox" id="cfg-allday" style="width:auto"> Include all-day events</label>
+    <label><input type="checkbox" id="cfg-accepted" style="width:auto"> Only meetings I accepted</label>
+
+    <h2 style="margin-top:18px">Display</h2>
+    <div class="row">
+      <div>
+        <label for="cfg-bright">Brightness</label>
+        <input id="cfg-bright" type="number" step="0.05" min="0.1" max="1">
+      </div>
+      <div>
+        <label for="cfg-rotate">Rotate</label>
+        <select id="cfg-rotate"><option value="0">0</option><option value="180">180</option></select>
+      </div>
+    </div>
+    <label><input type="checkbox" id="cfg-24h" style="width:auto"> 24-hour clock</label>
+    <label><input type="checkbox" id="cfg-seconds" style="width:auto"> Show seconds</label>
+
+    <h2 style="margin-top:18px">Quiet hours</h2>
+    <label><input type="checkbox" id="cfg-quiet" style="width:auto"> Dim on a schedule</label>
+    <div class="row">
+      <div><label for="cfg-quiet-start">From</label><input id="cfg-quiet-start" placeholder="22:00"></div>
+      <div><label for="cfg-quiet-end">To</label><input id="cfg-quiet-end" placeholder="07:00"></div>
+      <div><label for="cfg-quiet-bright">Brightness</label>
+           <input id="cfg-quiet-bright" type="number" step="0.05" min="0" max="1"></div>
+    </div>
+    <label><input type="checkbox" id="cfg-quiet-clock" style="width:auto"> Show only the clock while dimmed</label>
+
+    <div class="chips" style="margin-top:14px">
+      <button class="primary" onclick="saveConfig()">Save settings</button>
+    </div>
+    <p class="hint">Secrets are never sent back to this page; leave them blank to keep the stored value.</p>
+  </details>
+</section>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let settingsLoaded = false;
+
+async function get(url) {
+  const r = await fetch(url, {headers: {"Accept": "application/json"}});
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function post(url, body, method) {
+  const r = await fetch(url, {
+    method: method || "POST",
+    headers: {"Content-Type": "application/json"},
+    body: body === undefined ? "{}" : JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) alert(data.error || "Request failed");
+  refresh();
+  return data;
+}
+
+function hhmmss(seconds) {
+  seconds = Math.max(0, Math.round(seconds));
+  const h = Math.floor(seconds / 3600), m = Math.floor(seconds / 60) % 60, s = seconds % 60;
+  return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(s).padStart(2, "0");
+}
+
+function setStatus() {
+  const minutes = $("status-minutes").value;
+  post("/api/status", {
+    text: $("status-text").value,
+    color: $("status-color").value,
+    minutes: minutes ? Number(minutes) : null,
+  });
+}
+const clearStatus = () => { $("status-text").value = ""; post("/api/status", {}, "DELETE"); };
+const startTimer = (seconds, label) => post("/api/timer", {action: "start", seconds, label: label || ""});
+const timerAction = (action) => post("/api/timer", {action});
+function startCustomTimer() {
+  const minutes = Number($("timer-minutes").value);
+  if (!minutes) return alert("How many minutes?");
+  startTimer(minutes * 60, $("timer-label").value);
+}
+
+function renderEvents(events) {
+  const list = $("events");
+  list.innerHTML = "";
+  if (!events.length) { list.innerHTML = "<li>No upcoming meetings</li>"; return; }
+  for (const event of events.slice(0, 6)) {
+    const when = new Date(event.start).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+    const li = document.createElement("li");
+    const title = document.createElement("span");
+    title.textContent = event.title;
+    const right = document.createElement("span");
+    right.innerHTML = "<time>" + when + "</time>";
+    const hide = document.createElement("button");
+    hide.className = "hide"; hide.title = "Hide this meeting"; hide.textContent = "x";
+    hide.onclick = () => post("/api/calendar/hide", {uid: event.uid});
+    right.appendChild(hide);
+    li.append(title, right);
+    list.appendChild(li);
+  }
+}
+
+let lastTimerLeft = null;
+async function refresh() {
+  let data;
+  try { data = await get("/api/state"); } catch (e) { return; }
+  $("preview").src = "/preview.png?t=" + Date.now();
+
+  const ha = data.home_assistant;
+  $("ha-dot").className = "dot " + (ha.connected ? "ok" : (ha.configured ? "bad" : ""));
+  $("ha-text").textContent = !ha.configured ? "not configured"
+    : ha.connected ? (ha.state + (data.state.mic_degraded ? " (stale)" : "")) : "disconnected";
+  const cal = data.calendar;
+  $("cal-dot").className = "dot " + (cal.ok ? "ok" : (cal.configured ? "bad" : ""));
+  $("cal-text").textContent = !cal.configured ? "not configured"
+    : cal.ok ? cal.events + " events" : "unreachable";
+  $("cal-age").textContent = cal.stale_seconds === null ? ""
+    : "Feed last read " + Math.round(cal.stale_seconds / 60) + " min ago." +
+      (cal.last_error ? " Last error: " + cal.last_error : "");
+
+  const warnings = $("warnings");
+  warnings.hidden = !data.state.warnings.length;
+  warnings.textContent = data.state.warnings.join(" - ");
+
+  lastTimerLeft = data.timer.seconds_left;
+  $("countdown").textContent = data.timer.running || data.timer.paused
+    ? hhmmss(data.timer.seconds_left) + (data.timer.paused ? " (paused)" : "") : "--:--";
+
+  if (document.activeElement !== $("status-text")) $("status-text").value = data.status.text;
+  renderEvents(data.events);
+  if (!settingsLoaded) loadConfig();
+}
+
+async function loadConfig() {
+  const c = await get("/api/config");
+  settingsLoaded = true;
+  $("cfg-tz").value = c.timezone;
+  $("cfg-ha-url").value = c.home_assistant.url;
+  $("cfg-ha-entity").value = c.home_assistant.entity;
+  $("cfg-ha-states").value = (c.home_assistant.busy_states || []).join(", ");
+  $("cfg-email").value = c.calendar.email;
+  $("cfg-refresh").value = c.calendar.refresh_seconds;
+  $("cfg-lookahead").value = c.calendar.lookahead_hours;
+  $("cfg-allday").checked = c.calendar.include_all_day;
+  $("cfg-accepted").checked = c.calendar.require_accepted;
+  $("cfg-bright").value = c.display.brightness;
+  $("cfg-rotate").value = String(c.display.rotate);
+  $("cfg-24h").checked = c.display.time_24h;
+  $("cfg-seconds").checked = c.display.show_seconds;
+  $("cfg-quiet").checked = c.display.quiet_hours.enabled;
+  $("cfg-quiet-start").value = c.display.quiet_hours.start;
+  $("cfg-quiet-end").value = c.display.quiet_hours.end;
+  $("cfg-quiet-bright").value = c.display.quiet_hours.brightness;
+  $("cfg-quiet-clock").checked = c.display.quiet_hours.clock_only;
+}
+
+async function saveConfig() {
+  const states = $("cfg-ha-states").value.split(",").map(s => s.trim()).filter(Boolean);
+  await post("/api/config", {
+    timezone: $("cfg-tz").value.trim(),
+    home_assistant: {
+      url: $("cfg-ha-url").value.trim(),
+      token: $("cfg-ha-token").value,
+      entity: $("cfg-ha-entity").value.trim(),
+      busy_states: states.length ? states : ["on"],
+    },
+    calendar: {
+      ics_url: $("cfg-ics").value.trim(),
+      email: $("cfg-email").value.trim(),
+      refresh_seconds: Number($("cfg-refresh").value) || 300,
+      lookahead_hours: Number($("cfg-lookahead").value) || 12,
+      include_all_day: $("cfg-allday").checked,
+      require_accepted: $("cfg-accepted").checked,
+    },
+    display: {
+      brightness: Number($("cfg-bright").value) || 1,
+      rotate: Number($("cfg-rotate").value),
+      time_24h: $("cfg-24h").checked,
+      show_seconds: $("cfg-seconds").checked,
+      quiet_hours: {
+        enabled: $("cfg-quiet").checked,
+        start: $("cfg-quiet-start").value.trim(),
+        end: $("cfg-quiet-end").value.trim(),
+        brightness: Number($("cfg-quiet-bright").value),
+        clock_only: $("cfg-quiet-clock").checked,
+      },
+    },
+  });
+  $("cfg-ha-token").value = ""; $("cfg-ics").value = "";
+  $("settings-panel").classList.add("ok-flash");
+  setTimeout(() => $("settings-panel").classList.remove("ok-flash"), 1000);
+}
+
+// Tick the countdown locally between polls so it does not stutter.
+setInterval(() => {
+  if (lastTimerLeft > 0) {
+    lastTimerLeft -= 1;
+    $("countdown").textContent = hhmmss(lastTimerLeft);
+  }
+}, 1000);
+setInterval(refresh, 3000);
+refresh();
+</script>
+</body>
+</html>

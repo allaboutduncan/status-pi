@@ -1,0 +1,8 @@
+aiohttp>=3.9
+Pillow>=10.0
+PyYAML>=6.0
+icalendar>=6.0
+recurring-ical-events>=3.0
+# Optional but strongly recommended on the Pi: makes the RGB565 conversion
+# roughly two orders of magnitude faster than the pure-Python fallback.
+numpy>=1.24

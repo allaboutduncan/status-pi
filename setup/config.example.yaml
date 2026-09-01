@@ -1,0 +1,53 @@
+# status-pi configuration.  Everything here can also be set from the web UI at
+# http://status-pi.local:8080 -- this file is what that UI writes.
+
+timezone: Europe/London
+
+home_assistant:
+  # Base URL of Home Assistant on your LAN (http or https).
+  url: http://homeassistant.local:8123
+  # Profile -> Security -> Long-lived access tokens -> Create token
+  token: ""
+  # The entity your camera/microphone automation reacts to.
+  entity: binary_sensor.work_camera
+  # Entity states that mean "I am on a call".
+  busy_states:
+    - "on"
+
+calendar:
+  # Google Calendar -> Settings for my calendars -> Integrate calendar ->
+  # "Secret address in iCal format".  Treat this like a password.
+  ics_url: ""
+  # Used to find your own ATTENDEE line so declined meetings can be dropped.
+  email: ""
+  refresh_seconds: 300
+  require_accepted: true
+  # Google's feed often reports NEEDS-ACTION even for meetings you accepted;
+  # set this false only if you would rather hide anything unconfirmed.
+  needs_action_is_accepted: true
+  include_all_day: false
+  lookahead_hours: 12
+  hidden_uids: []
+
+display:
+  framebuffer: /dev/fb1
+  width: 480
+  height: 320
+  brightness: 1.0
+  # 180 flips the image if the panel ends up upside down on the wall.
+  rotate: 0
+  time_24h: true
+  show_seconds: false
+  quiet_hours:
+    enabled: true
+    start: "22:00"
+    end: "07:00"
+    # The (A) panel's backlight is hard-wired on, so this dims the pixels.
+    brightness: 0.25
+    clock_only: false
+
+web:
+  host: 0.0.0.0
+  port: 8080
+  # Leave empty for an open LAN-only UI, or set a shared secret.
+  auth_token: ""
