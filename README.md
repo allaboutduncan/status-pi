@@ -51,6 +51,9 @@ Flash Bookworm Lite with Raspberry Pi Imager, pre-seeding WiFi, SSH, your
 hostname (`status-pi`) and locale. Then, over SSH:
 
 ```bash
+sudo apt update
+sudo apt install -y git
+
 git clone https://github.com/<you>/status-pi.git
 cd status-pi
 
