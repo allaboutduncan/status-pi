@@ -91,8 +91,18 @@ class StatusPi:
         self.rows_written = 0
         self._wake = asyncio.Event()
         self._stopping = False
+        #: asyncio holds only a weak reference to a running task, so a task
+        #: nobody keeps can be garbage collected part-way through.  These are
+        #: the one-shot reconfiguration tasks; hold them until they finish.
+        self._tasks = set()
 
     # -- lifecycle ---------------------------------------------------------
+    def spawn(self, coro) -> None:
+        """Run a one-shot background task and keep it alive until it ends."""
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
     def wake(self) -> None:
         """Nudge the tick loop; called whenever a source or the web UI
         changes something the panel should show immediately."""
@@ -179,12 +189,12 @@ class StatusPi:
         self.renderer = make_renderer(new_config)
         self.ha.config = new_config
         if new_config.calendar.provider != previous_provider:
-            asyncio.create_task(self._swap_calendar())
+            self.spawn(self._swap_calendar())
         else:
             self.calendar.config = new_config
             self.calendar.tz = self.tz
         # Reconnect HA in case the URL, token or entity moved.
-        asyncio.create_task(self._restart_ha())
+        self.spawn(self._restart_ha())
         self.calendar.refresh_soon()
         self.state = None
         self.wake()

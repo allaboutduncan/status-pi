@@ -20,6 +20,10 @@ def parse_args(argv=None):
                         help="test the Home Assistant link step by step and exit")
     parser.add_argument("--watch", type=int, metavar="SECONDS", default=0,
                         help="with --check-ha, stream entity changes for a while")
+    parser.add_argument("--check-calendar", action="store_true",
+                        help="fetch the calendar and show what reaches the panel")
+    parser.add_argument("--raw", action="store_true",
+                        help="with --check-calendar, print the untouched response")
     parser.add_argument("--frames", metavar="DIR",
                         help="write one PNG per display state to DIR and exit")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -106,6 +110,13 @@ def main(argv=None) -> int:
         from .diagnose import check_ha
 
         return _asyncio.run(check_ha(Config.load(args.config), watch=args.watch))
+    if args.check_calendar:
+        import asyncio as _asyncio
+
+        from .config import Config
+        from .diagnose import check_calendar
+
+        return _asyncio.run(check_calendar(Config.load(args.config), raw=args.raw))
     if args.frames:
         return sample_frames(args.frames, args.config)
 

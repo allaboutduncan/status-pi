@@ -201,6 +201,7 @@ python -m status_pi --frames ./frames    # one PNG per display state
 python -m status_pi --sim                # full app, panel rendered to PNG,
                                          # live at http://localhost:8080/preview.png
 python -m status_pi --check-ha           # diagnose the Home Assistant link
+python -m status_pi --check-calendar     # diagnose the calendar feed
 python -m pytest tests -q
 ```
 
@@ -252,6 +253,21 @@ camera/microphone entities to use instead. If every step passes but the panel
 never flips, `--check-ha --watch 60` streams the entity while you toggle your
 camera — no changes there means the automation reacts to a different entity.
 The Now panel shows the same underlying error under the health dots.
+
+**The calendar entity is listed but no meetings appear.** Run:
+
+```bash
+python -m status_pi --check-calendar
+python -m status_pi --check-calendar --raw   # the untouched response
+```
+
+It fetches through the same code path the app uses and shows what survives
+each stage, which separates the three things "0 events" can mean: the request
+failed, the calendar really is empty for the window we ask for (6 hours back
+to 36 hours ahead), or everything was filtered out. It also flags meetings
+that exist but sit beyond `lookahead_hours`, which look identical to "nothing
+was fetched" from the panel. The Now panel reports the same reason under the
+health dots.
 
 **A meeting shows that you declined.** Google's secret iCal feed is
 inconsistent about attendee status. Hide it with the × in Upcoming, or set

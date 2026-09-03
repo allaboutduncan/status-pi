@@ -314,9 +314,12 @@ async function refresh() {
   $("cal-dot").className = "dot " + (cal.ok ? "ok" : (cal.configured ? "bad" : ""));
   $("cal-text").textContent = !cal.configured ? "not configured"
     : cal.ok ? cal.events + " events" : "unreachable";
-  $("cal-age").textContent = cal.stale_seconds === null ? ""
-    : "Feed last read " + Math.round(cal.stale_seconds / 60) + " min ago." +
-      (cal.last_error ? " Last error: " + cal.last_error : "");
+  $("cal-age").textContent = [
+    cal.stale_seconds === null ? "" :
+      "Feed last read " + Math.round(cal.stale_seconds / 60) + " min ago.",
+    cal.note || "",
+    cal.last_error ? "Last error: " + cal.last_error : "",
+  ].filter(Boolean).join(" ");
 
   const warnings = $("warnings");
   warnings.hidden = !data.state.warnings.length;

@@ -138,6 +138,8 @@ class BaseCalendarFeed:
         self.ok = False
         self.last_fetch = None
         self.last_error = None
+        #: explains an empty panel when the fetch itself succeeded
+        self.note = ""
         self._task = None
         self._stop = asyncio.Event()
         self._load_cache()
@@ -174,6 +176,7 @@ class BaseCalendarFeed:
             "events": len(self.events),
             "last_fetch": self.last_fetch,
             "last_error": self.last_error,
+            "note": self.note,
             "stale_seconds": None if not self.last_fetch else int(time.time() - self.last_fetch),
         }
 
@@ -307,12 +310,20 @@ class HACalendarFeed(BaseCalendarFeed):
 
     def parse(self, payload):
         events = []
+        unparsed = 0
+        skipped_all_day = 0
         for item in payload or []:
             start, start_all_day = self._moment(item.get("start"))
             end, _ = self._moment(item.get("end"))
             if start is None:
+                # Never drop an event in silence: "0 events" with a healthy
+                # green dot is the least debuggable failure this thing has.
+                unparsed += 1
+                log.warning("could not read the dates on %r: start=%r end=%r",
+                            item.get("summary"), item.get("start"), item.get("end"))
                 continue
             if start_all_day and not self.config.calendar.include_all_day:
+                skipped_all_day += 1
                 continue
             if end is None or end <= start:
                 end = start + timedelta(minutes=30)
@@ -324,22 +335,54 @@ class HACalendarFeed(BaseCalendarFeed):
             events.append(Event(uid=uid, title=title, start=start, end=end,
                                 all_day=start_all_day, accepted=True))
         events.sort(key=lambda e: e.start)
+        self.note = self._summarise(len(payload or []), len(events),
+                                    unparsed, skipped_all_day)
         return events
 
+    def _summarise(self, received, kept, unparsed, all_day):
+        """A plain-English reason when Home Assistant sent events but none of
+        them made it to the panel."""
+        if kept or not received:
+            return ""
+        if unparsed:
+            return ("%d events received but none had dates status-pi could read"
+                    % received)
+        if all_day:
+            return ("%d events received, all of them all-day -- switch on "
+                    "'Include all-day events' to show them" % all_day)
+        return "%d events received but all were filtered out" % received
+
     def _moment(self, value):
-        """HA sends {"dateTime": ...} for timed events and {"date": ...} for
-        all-day ones.  Returns (datetime, is_all_day)."""
-        if not isinstance(value, dict):
-            return None, False
-        if value.get("dateTime"):
-            moment = datetime.fromisoformat(value["dateTime"])
-            if moment.tzinfo is None:
-                moment = moment.replace(tzinfo=self.tz)
-            return moment.astimezone(self.tz), False
-        if value.get("date"):
-            day = datetime.fromisoformat(value["date"])
-            return day.replace(tzinfo=self.tz), True
+        """Read one end of an event, as (datetime, is_all_day).
+
+        Home Assistant documents {"dateTime": ...} for timed events and
+        {"date": ...} for all-day ones, but versions and custom integrations
+        have been known to send a bare ISO string instead, so both are
+        accepted rather than quietly dropping the event.
+        """
+        if isinstance(value, str):
+            return self._parse_stamp(value)
+        if isinstance(value, dict):
+            if value.get("dateTime"):
+                return self._parse_stamp(value["dateTime"])
+            if value.get("date"):
+                stamp, _ = self._parse_stamp(value["date"])
+                return stamp, True
         return None, False
+
+    def _parse_stamp(self, text):
+        """ISO 8601 in, aware datetime out.  A date with no time is all-day."""
+        text = str(text).strip()
+        if not text:
+            return None, False
+        try:
+            moment = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return None, False
+        all_day = len(text) == 10  # "2026-09-03"
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=self.tz)
+        return moment.astimezone(self.tz), all_day
 
 
 class NullCalendarFeed(BaseCalendarFeed):

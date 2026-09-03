@@ -124,3 +124,46 @@ def test_auth_token_locks_the_ui_down(device):
         return denied.status, allowed.status, health.status
 
     assert run(device, scenario) == (401, 200, 200)
+
+
+def test_switching_calendar_provider_actually_swaps_the_feed(device):
+    """asyncio keeps only a weak reference to a running task, so the swap
+    task must be held or it can be collected part-way through -- leaving the
+    old feed in place, with no events and no error to explain it."""
+    from status_pi.sources.cal import HACalendarFeed, IcsCalendarFeed
+
+    assert isinstance(device.calendar, IcsCalendarFeed)
+
+    async def scenario(client):
+        await client.post("/api/config", json={
+            "calendar": {"provider": "ha", "ha_entity": "calendar.work"}})
+        # let the swap task run to completion
+        await asyncio.sleep(0.05)
+        return await (await client.get("/api/state")).json()
+
+    state = run(device, scenario)
+    assert isinstance(device.calendar, HACalendarFeed)
+    assert state["calendar"]["provider"] == "ha"
+    assert device.config.calendar.ha_entity == "calendar.work"
+
+
+def test_spawned_tasks_are_held_until_they_finish(device):
+    """A regression guard for the same weak-reference trap."""
+    async def scenario(client):
+        started = asyncio.Event()
+        finished = asyncio.Event()
+
+        async def slow():
+            started.set()
+            await asyncio.sleep(0.05)
+            finished.set()
+
+        device.spawn(slow())
+        await started.wait()
+        assert device._tasks, "the task must be referenced while it runs"
+        await asyncio.wait_for(finished.wait(), 1)
+        await asyncio.sleep(0)
+        return True
+
+    assert run(device, scenario)
+    assert device._tasks == set(), "and released once it is done"

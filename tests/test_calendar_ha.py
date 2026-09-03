@@ -111,3 +111,56 @@ def test_disabling_the_calendar_leaves_a_working_panel():
     feed.start()  # a no-op, but must not raise
     assert feed.events == []
     assert feed.describe()["configured"] is False
+
+
+def test_bare_iso_strings_are_accepted(feed):
+    """Documented shape is {"dateTime": ...}, but versions and custom
+    integrations have sent plain strings; dropping those silently is how you
+    get a healthy green dot and an empty panel."""
+    events = feed.parse([
+        {"summary": "String dates",
+         "start": "2026-09-01T09:00:00+00:00",
+         "end": "2026-09-01T10:00:00+00:00"},
+    ])
+    assert len(events) == 1
+    assert events[0].start == datetime(2026, 9, 1, 9, 0, tzinfo=TZ)
+    assert events[0].all_day is False
+
+
+def test_zulu_times_are_accepted(feed):
+    events = feed.parse([
+        {"summary": "Zulu", "start": {"dateTime": "2026-09-01T09:00:00Z"},
+         "end": {"dateTime": "2026-09-01T10:00:00Z"}},
+    ])
+    assert len(events) == 1
+    assert events[0].start.utcoffset().total_seconds() == 0
+
+
+def test_bare_date_strings_count_as_all_day(feed):
+    payload = [{"summary": "Holiday", "start": "2026-09-01", "end": "2026-09-02"}]
+    assert feed.parse(payload) == []
+    feed.config.calendar.include_all_day = True
+    assert feed.parse(payload)[0].all_day is True
+
+
+def test_unreadable_dates_are_explained_not_swallowed(feed):
+    events = feed.parse([
+        {"summary": "Nonsense", "start": {"when": "tomorrow"}, "end": {}},
+        {"summary": "Also broken", "start": "not a date", "end": "nope"},
+    ])
+    assert events == []
+    assert "none had dates status-pi could read" in feed.note
+    assert "2 events" in feed.note
+
+
+def test_all_day_only_calendar_says_so(feed):
+    feed.parse([{"summary": "Holiday", "start": {"date": "2026-09-01"},
+                 "end": {"date": "2026-09-02"}}])
+    assert "all-day" in feed.note
+    assert "Include all-day events" in feed.note
+
+
+def test_a_healthy_fetch_leaves_no_note(feed):
+    feed.parse([{"summary": "Standup", "start": {"dateTime": "2026-09-01T09:00:00+00:00"},
+                 "end": {"dateTime": "2026-09-01T09:15:00+00:00"}}])
+    assert feed.note == ""

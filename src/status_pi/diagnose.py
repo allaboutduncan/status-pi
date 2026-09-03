@@ -200,3 +200,106 @@ async def check_ha(config: Config, watch: int = 0) -> int:
 
     print("\nAll checks passed.")
     return 0
+
+
+async def check_calendar(config: Config, raw: bool = False) -> int:
+    """Fetch the configured calendar and show what survives each stage.
+
+    "0 events" can mean the request failed, the entity is empty, or every
+    event was filtered out; this prints enough to tell those apart.
+    """
+    import json
+
+    from .sources.cal import make_calendar
+
+    provider = (config.calendar.provider or "ics").lower()
+    print("Provider: %s" % provider)
+    if provider == "none":
+        _line(OK, "calendar is switched off; the panel shows status only")
+        return 0
+    if provider == "ha":
+        print("Entity:   %s" % (config.calendar.ha_entity or "(not set)"))
+    else:
+        print("Feed:     %s" % ("set" if config.calendar.ics_url else "(not set)"))
+    print()
+
+    if not config.calendar_configured:
+        _line(BAD, "calendar is not fully configured")
+        if provider == "ha" and not config.ha_configured:
+            print("      The 'ha' provider also needs the Home Assistant URL, token")
+            print("      and camera entity filled in -- run --check-ha.")
+        return 1
+
+    feed = make_calendar(config, tz=_timezone(config))
+
+    if raw and provider == "ha":
+        payload = await _raw_ha_calendar(config)
+        print("Raw response from Home Assistant (first 3 events):")
+        print(json.dumps(payload[:3], indent=2) if payload else "  []")
+        print()
+
+    try:
+        events = await feed.fetch()
+    except Exception as exc:  # noqa: BLE001
+        _line(BAD, "fetch failed: %s" % exc)
+        return 1
+    _line(OK, "fetch succeeded")
+
+    if feed.note:
+        _line(BAD, feed.note)
+    if not events:
+        _line(BAD, "no events to show")
+        print("      Nothing is wrong with the connection -- the window we ask for")
+        print("      is 6 hours back to 36 hours ahead, so an empty result usually")
+        print("      means there is genuinely nothing in it. Try --raw to see what")
+        print("      Home Assistant actually returned.")
+        return 1
+
+    now = _now(config)
+    horizon = config.calendar.lookahead_hours
+    _line(OK, "%d events" % len(events))
+    for event in events[:10]:
+        hours = (event.start - now).total_seconds() / 3600
+        if event.start <= now < event.end:
+            when = "NOW"
+        elif hours < 0:
+            when = "past"
+        elif hours <= horizon:
+            when = "in %.1fh" % hours
+        else:
+            when = "in %.1fh (beyond the %dh lookahead)" % (hours, horizon)
+        print("        %-19s %-32s %s"
+              % (event.start.strftime("%a %d %b %H:%M"), event.title[:32], when))
+    return 0
+
+
+def _timezone(config):
+    from .app import load_timezone
+
+    return load_timezone(config.timezone)
+
+
+def _now(config):
+    from datetime import datetime
+
+    return datetime.now(_timezone(config))
+
+
+async def _raw_ha_calendar(config):
+    """The untouched JSON, for when the parsed result looks wrong."""
+    import aiohttp
+
+    from .sources.cal import WINDOW_AHEAD, WINDOW_BEHIND
+
+    now = _now(config)
+    ha = config.home_assistant
+    url = "%s/api/calendars/%s" % (ha.url.rstrip("/"), config.calendar.ha_entity)
+    params = {"start": (now - WINDOW_BEHIND).isoformat(),
+              "end": (now + WINDOW_AHEAD).isoformat()}
+    headers = {"Authorization": "Bearer %s" % ha.token}
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+        async with session.get(url, headers=headers, params=params) as response:
+            print("GET %s -> HTTP %s" % (response.url, response.status))
+            if response.status != 200:
+                return []
+            return await response.json()
