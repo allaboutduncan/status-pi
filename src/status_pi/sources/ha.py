@@ -54,12 +54,23 @@ class HomeAssistant:
     # -- public ------------------------------------------------------------
     @property
     def mic_on(self):
-        """True/False when we know, None when we do not."""
+        """True/False when we know, None when we do not.
+
+        Two ways to read the entity, because the useful ones are not all
+        binary.  A camera binary_sensor is `any_of ["on"]`; an "active audio
+        input" sensor reports whichever microphone is live and "Inactive"
+        when none is, which is `none_of ["Inactive"]`.
+        """
         if not self.connected or self.state is None:
             return None
-        if self.state in ("unknown", "unavailable"):
+        state = str(self.state).strip()
+        if state.lower() in ("unknown", "unavailable", ""):
             return None
-        return self.state in self.config.home_assistant.busy_states
+        ha = self.config.home_assistant
+        listed = {str(value).strip().lower() for value in (ha.busy_states or [])}
+        if (ha.busy_match or "any_of").lower() == "none_of":
+            return state.lower() not in listed
+        return state.lower() in listed
 
     def start(self) -> None:
         if self._task is None or self._task.done():

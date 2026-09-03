@@ -153,8 +153,18 @@
     <input id="cfg-ha-token" type="password" placeholder="leave blank to keep">
     <label for="cfg-ha-entity">Camera / microphone entity</label>
     <input id="cfg-ha-entity" placeholder="binary_sensor.work_camera">
-    <label for="cfg-ha-states">States that mean busy (comma separated)</label>
+    <label for="cfg-ha-match">Busy when the state is</label>
+    <select id="cfg-ha-match">
+      <option value="any_of">one of these</option>
+      <option value="none_of">anything except these</option>
+    </select>
+    <label for="cfg-ha-states">States (comma separated)</label>
     <input id="cfg-ha-states" placeholder="on">
+    <p class="hint">A camera or microphone <code>binary_sensor</code> wants
+       <em>one of</em> &ldquo;on&rdquo;. A macOS <em>Active Audio Input</em> sensor reports
+       whichever microphone is live, so it wants <em>anything except</em>
+       &ldquo;Inactive&rdquo; &mdash; that way a new headset does not need a config change.
+       Run <code>--check-ha</code> to see what your entity actually reports.</p>
 
     <h2 style="margin-top:18px">Calendar</h2>
     <label for="cfg-provider">Where meetings come from</label>
@@ -340,6 +350,7 @@ async function loadConfig() {
   $("cfg-tz").value = c.timezone;
   $("cfg-ha-url").value = c.home_assistant.url;
   $("cfg-ha-entity").value = c.home_assistant.entity;
+  $("cfg-ha-match").value = c.home_assistant.busy_match || "any_of";
   $("cfg-ha-states").value = (c.home_assistant.busy_states || []).join(", ");
   $("cfg-provider").value = c.calendar.provider || "ics";
   $("cfg-email").value = c.calendar.email;
@@ -398,6 +409,7 @@ async function saveConfig() {
       url: $("cfg-ha-url").value.trim(),
       token: $("cfg-ha-token").value,
       entity: $("cfg-ha-entity").value.trim(),
+      busy_match: $("cfg-ha-match").value,
       busy_states: states.length ? states : ["on"],
     },
     calendar: {

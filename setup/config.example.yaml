@@ -10,7 +10,17 @@ home_assistant:
   token: ""
   # The entity your camera/microphone automation reacts to.
   entity: binary_sensor.work_camera
-  # Entity states that mean "I am on a call".
+  # How busy_states is read:
+  #   any_of  - busy when the state is one of them (binary_sensor: "on")
+  #   none_of - busy when the state is anything else
+  #
+  # macOS reports the active microphone by name, so for
+  #   sensor.<your_mac>_active_audio_input
+  # use none_of with "Inactive": every microphone counts as busy without
+  # having to list them, and a new headset needs no config change.
+  busy_match: any_of
+  # Entity states that mean "I am on a call" (or, under none_of, the states
+  # that mean idle).  Compared case-insensitively.
   busy_states:
     - "on"
 

@@ -41,7 +41,16 @@ class HAConfig:
     url: str = ""
     token: str = ""
     entity: str = ""
-    #: entity states that mean "microphone/camera live"
+    #: how busy_states is read:
+    #:   "any_of"  - busy when the state is one of them (binary sensors)
+    #:   "none_of" - busy when the state is anything else.  This is what an
+    #:               "active audio input" sensor needs: it reports the name of
+    #:               whichever microphone is live, and "Inactive" when none
+    #:               is, so listing every microphone you might ever own is
+    #:               hopeless but listing the idle value is trivial.
+    busy_match: str = "any_of"
+    #: entity states that mean "microphone/camera live" (or, under none_of,
+    #: the states that mean idle).  Compared case-insensitively.
     busy_states: list = field(default_factory=lambda: ["on"])
 
 

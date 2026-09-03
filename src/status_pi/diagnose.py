@@ -131,14 +131,10 @@ async def check_ha(config: Config, watch: int = 0) -> int:
             _line(BAD, "entity %s does not exist" % ha.entity)
             _print_candidates(states, ha.entity)
             return 1
-        _line(OK, "entity %s = %r" % (ha.entity, entity.get("state")))
-        if entity.get("state") in ("unknown", "unavailable"):
-            print("      The entity exists but has no usable state right now, so the panel")
-            print("      will fall back to the calendar until it reports on/off.")
-        elif entity.get("state") not in ha.busy_states and entity.get("state") != "off":
-            print("      Note: %r is not in busy_states (%s) -- if that value means you are"
-                  % (entity.get("state"), ", ".join(ha.busy_states)))
-            print("      on a call, add it under Settings -> States that mean busy.")
+        state = entity.get("state")
+        _line(OK, "entity %s = %r" % (ha.entity, state))
+        _explain_verdict(config, state)
+        await _show_history(session, config)
 
         # 4. calendar entities, for the "ha" calendar provider
         status, calendars = await _api(session, ha.url, ha.token, "/api/calendars")
@@ -303,3 +299,75 @@ async def _raw_ha_calendar(config):
             if response.status != 200:
                 return []
             return await response.json()
+
+
+#: states that mean "no microphone is live" on the sensors people actually use
+IDLE_HINTS = ("inactive", "off", "idle", "none", "not in use")
+
+
+def _explain_verdict(config, state) -> None:
+    """Say what the panel would do with this state, and -- when the entity is
+    not a plain on/off sensor -- what to configure so it does the right thing."""
+    from .sources.ha import HomeAssistant
+
+    ha = config.home_assistant
+    link = HomeAssistant(config)
+    link.connected = True
+    link.state = state
+    verdict = link.mic_on
+    mode = (ha.busy_match or "any_of").lower()
+    rule = ("anything except %s" if mode == "none_of" else "one of %s") % (
+        ", ".join(repr(v) for v in ha.busy_states) or "(nothing)")
+
+    if verdict is None:
+        _line(BAD, "state is not usable, so the panel falls back to the calendar")
+        return
+    _line(OK, "panel would show %s  (busy when the state is %s)"
+          % ("BUSY" if verdict else "FREE", rule))
+
+    if mode == "none_of" or str(state).lower() in ("on", "off"):
+        return
+    # A non-binary entity under exact matching: listing every possible device
+    # name is hopeless, so point at the inverse rule instead.
+    idle = next((h for h in IDLE_HINTS if h in str(state).lower()), None)
+    print()
+    print("      This entity does not report on/off, so listing every value that")
+    print("      means busy is a losing game -- plug in a different headset and it")
+    print("      breaks. Set the match the other way round instead, in Settings:")
+    print("        Busy when the state is: anything except")
+    print("        States: %s" % (idle.title() if idle else "Inactive"))
+    if not idle:
+        print("      (%r looks like a live input; the idle value is whatever" % state)
+        print("       it shows when nothing is using the mic -- see the history below.)")
+
+
+async def _show_history(session, config, hours: int = 24) -> None:
+    """Distinct values this entity has taken recently.
+
+    This is the quickest way to see which states mean busy and which mean
+    idle, without having to sit and watch it change.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    ha = config.home_assistant
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    path = "/api/history/period/%s?filter_entity_id=%s&minimal_response" % (since, ha.entity)
+    try:
+        status, payload = await _api(session, ha.url, ha.token, path)
+    except Exception:  # noqa: BLE001 - history is a nicety, never fatal
+        return
+    if status != 200 or not payload:
+        return
+    rows = payload[0] if isinstance(payload[0], list) else payload
+    seen = {}
+    for row in rows:
+        value = row.get("state")
+        if value is None:
+            continue
+        seen[value] = seen.get(value, 0) + 1
+    if len(seen) <= 1:
+        return
+    print()
+    print("      values seen in the last %dh (most frequent first):" % hours)
+    for value, count in sorted(seen.items(), key=lambda kv: -kv[1])[:8]:
+        print("        %-44s %d changes" % (repr(value), count))

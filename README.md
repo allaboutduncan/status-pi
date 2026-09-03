@@ -104,6 +104,7 @@ Settings. Nothing needs to be typed on the device itself.
 | Home Assistant URL | e.g. `http://homeassistant.local:8123` |
 | Long-lived token | HA → your profile → Security → Long-lived access tokens |
 | Camera/mic entity | the entity your existing camera-on automation triggers on |
+| Busy when the state is | `one of` for an on/off sensor, `anything except` for a sensor that names the live device |
 | Calendar source | one of the three options below |
 | Your email | the address that appears as `ATTENDEE` on your work invites (iCal only) |
 
@@ -116,9 +117,22 @@ python -m status_pi --check-ha --watch 60   # then toggle your camera
 ```
 
 Or open your automation in Home Assistant, switch to **Edit in YAML**, and copy
-the `entity_id` from its state trigger. If that entity reports
-something other than `on`/`off` (say `recording`), add that value to
-**States that mean busy**.
+the `entity_id` from its state trigger.
+
+**If the entity does not report `on`/`off`**, set the match the other way
+round. macOS's `sensor.<your_mac>_active_audio_input` reports the *name* of
+whichever microphone is live and `Inactive` when none is, so listing every
+value that means busy is a losing game — plug in a different headset and it
+breaks. Instead:
+
+| Busy when the state is | anything except |
+| --- | --- |
+| **States** | `Inactive` |
+
+Any live microphone then reads as BUSY, including ones you have not bought
+yet. `--check-ha` resolves your entity's current value to BUSY or FREE, shows
+the distinct states it has taken in the last 24 hours, and recommends this
+setup when it sees a non-binary entity.
 
 ## Where meetings come from
 
