@@ -91,6 +91,7 @@ sudo reboot
 dmesg | grep -i fb_ili9486          # graphics fb1: fb_ili9486 frame buffer
 cat /sys/class/graphics/fb1/virtual_size   # 480,320
 
+cd status-pi
 sudo ./setup/install.sh             # venv, service user, systemd unit
 ```
 
