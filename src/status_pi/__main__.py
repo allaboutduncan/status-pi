@@ -74,8 +74,13 @@ def sample_frames(directory, config_path):
         renderer.render(state).save(out / ("%s.png" % name))
         print("wrote %s.png  [%s] %s" % (name, state.mode, state.headline))
 
+    long_title = [Event(
+        "c", "Quarterly planning with the platform team",
+        now - timedelta(minutes=5), now + timedelta(minutes=55))]
+
     idle = RuntimeState()
     frame("busy", idle, events=events, mic_on=True, ha_connected=True)
+    frame("busy-long-title", idle, events=long_title, mic_on=True, ha_connected=True)
     frame("free", idle, events=events[1:], mic_on=False, ha_connected=True)
     frame("free-no-meetings", idle, events=[], mic_on=False, ha_connected=True)
     frame("ha-offline", idle, events=events, mic_on=None, ha_connected=False)

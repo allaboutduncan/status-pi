@@ -20,8 +20,9 @@ from .fonts import load
 
 PADDING = 16
 
-#: sizes and tracking straight from the design
-HEADER_SIZE, HEADER_TRACK = 11, 1
+#: sizes and tracking from the design, except the header row: the design's
+#: 11px was too small to read across a room, so the whole row is doubled.
+HEADER_SIZE, HEADER_TRACK = 22, 2
 HEADLINE_SIZE, HEADLINE_TRACK = 80, 4
 #: 80px is the design size and the maximum; a longer custom status steps
 #: down through these rather than losing its second half to an ellipsis.
@@ -31,7 +32,11 @@ SUBLINE_SIZE, SUBLINE_TRACK = 13, 2
 
 HEADLINE_GAP = 12  # margin-bottom on the status word
 CONTEXT_MAX_WIDTH = 440
-DOT_SIZE, DOT_GAP = 6, 6
+#: a meeting title too wide for one line wraps rather than being cut short
+CONTEXT_MAX_LINES = 2
+CONTEXT_LINE_HEIGHT = round(CONTEXT_SIZE * 1.35)
+#: scaled with the header row so the indicators stay in proportion to it
+DOT_SIZE, DOT_GAP = 12, 12
 
 PULSE_PERIOD = 2.0  # seconds, matching `pulse 2s ease-in-out infinite`
 PULSE_MIN_OPACITY = 0.7
@@ -97,6 +102,75 @@ def fit_headline(text: str, max_width: float):
             return font, size, tracking
     size = HEADLINE_SIZES[-1]
     return load(size, bold=True), size, headline_tracking(size)
+
+
+def _is_separator(word: str) -> bool:
+    """A token that is punctuation only, and so reads as belonging to the
+    word after it rather than the one before."""
+    return bool(word) and all(char in "-–—·:|/" for char in word)
+
+
+def _split_word(word: str, font, tracking: int, max_width: float):
+    """Break a single word too wide for any line into pieces that fit."""
+    pieces, current = [], ""
+    for char in word:
+        if current and tracked_width(current + char, font, tracking) > max_width:
+            pieces.append(current)
+            current = char
+        else:
+            current += char
+    if current:
+        pieces.append(current)
+    return pieces
+
+
+def wrap_lines(text: str, font, tracking: int, max_width: float, max_lines: int):
+    """Greedy word wrap, with the last line ellipsised if it still overflows.
+
+    A long meeting title is worth a second line -- "Quarterly planning with
+    the platform team" says nothing useful once it has been cut down to
+    "Quarterly planning with the...".
+    """
+    words = (text or "").split()
+    if not words:
+        return []
+
+    # A lone separator must not be left stranded at the end of a line
+    # ("...platform team -" / "until 10:36"), so glue it to what follows.
+    joined = []
+    for word in words:
+        if joined and _is_separator(joined[-1]):
+            joined[-1] = "%s %s" % (joined[-1], word)
+        else:
+            joined.append(word)
+
+    tokens = []
+    for word in joined:
+        if tracked_width(word, font, tracking) <= max_width:
+            tokens.append(word)
+        else:
+            tokens.extend(_split_word(word, font, tracking, max_width))
+
+    lines, current = [], ""
+    while tokens:
+        candidate = ("%s %s" % (current, tokens[0])) if current else tokens[0]
+        if tracked_width(candidate, font, tracking) <= max_width:
+            current = candidate
+            tokens.pop(0)
+            continue
+        lines.append(current)
+        current = ""
+        if len(lines) == max_lines:
+            break
+    if current and len(lines) < max_lines:
+        lines.append(current)
+        tokens = []
+
+    if tokens and lines:
+        # Fold what is left back onto the last line so the ellipsis marks a
+        # real truncation rather than a tidy-looking break.
+        lines[-1] = ellipsize(" ".join([lines[-1]] + tokens), font, tracking, max_width)
+    return lines
 
 
 def pulse_amount(now: float) -> float:
@@ -173,25 +247,28 @@ class MonoRenderer:
             colour = palette.blend(
                 colour, self._dim(palette.BACKGROUND, state), pulse_amount(self._clock))
 
-        # The design does not scroll: anything still too wide at the smallest
-        # headline size is cut with an ellipsis.
+        # Nothing scrolls in this style: the headline shrinks to fit, and a
+        # meeting title too wide for one line wraps onto a second.
         headline = ellipsize(state.headline, headline_font, tracking,
                              self.width - 2 * PADDING)
-        context = ellipsize(state.context, context_font, CONTEXT_TRACK,
-                            CONTEXT_MAX_WIDTH)
+        lines = wrap_lines(state.context, context_font, CONTEXT_TRACK,
+                           CONTEXT_MAX_WIDTH, CONTEXT_MAX_LINES)
 
-        context_h = context_font.getbbox("Ag")[3] if context else 0
-        block_h = headline_h + (HEADLINE_GAP + context_h if context else 0)
+        glyph_h = context_font.getbbox("Ag")[3]
+        context_h = (len(lines) - 1) * CONTEXT_LINE_HEIGHT + glyph_h if lines else 0
+        block_h = headline_h + (HEADLINE_GAP + context_h if lines else 0)
         y = top + ((bottom - top) - block_h) / 2
 
         x = (self.width - tracked_width(headline, headline_font, tracking)) / 2
         draw_tracked(draw, (x, y), headline, headline_font, colour, tracking)
 
-        if context:
+        if lines:
             y += headline_h + HEADLINE_GAP
-            x = (self.width - tracked_width(context, context_font, CONTEXT_TRACK)) / 2
-            draw_tracked(draw, (x, y), context, context_font,
-                         self._dim(palette.WHITE, state), CONTEXT_TRACK)
+            white = self._dim(palette.WHITE, state)
+            for line in lines:
+                x = (self.width - tracked_width(line, context_font, CONTEXT_TRACK)) / 2
+                draw_tracked(draw, (x, y), line, context_font, white, CONTEXT_TRACK)
+                y += CONTEXT_LINE_HEIGHT
 
     def _draw_subline(self, draw, state, bottom: float) -> None:
         if not state.subline:

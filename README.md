@@ -29,15 +29,19 @@ rewrites 7 KB of the panel rather than all 300 KB.
 `display.style` picks one of two, switchable from Settings:
 
 - **`mono`** (default) — Roboto Mono on a near-black ground: an 80px status
-  word, a muted header, a meeting line and a small tracked subline. This is
-  the [Claude design](https://claude.ai/design/p/2e3be59a-cb75-48eb-b496-b47365319c9d)
-  the panel is built to.
+  word, a muted 22px header, a meeting line and a small tracked subline. This
+  is the [Claude design](https://claude.ai/design/p/2e3be59a-cb75-48eb-b496-b47365319c9d)
+  the panel is built to, with the header row at twice the design's size so
+  the clock and date read from across a room.
 - **`matrix`** — the original LED dot-matrix lattice, with scrolling marquees
   for anything too wide.
 
 The status word is 80px for `BUSY`, `FREE` and countdowns; a longer custom
 status steps down through smaller sizes so it stays on one line rather than
-losing its second half to an ellipsis.
+losing its second half to an ellipsis. A meeting title too wide for one line
+wraps onto a second before anything is trimmed, so "Quarterly planning with
+the platform team - until 16:00" arrives whole instead of as "Quarterly
+planning with the…".
 
 `display.pulse` gently fades the status word in and out (mono only). It is off
 by default — it redraws the largest band on the panel about eight times a
@@ -295,13 +299,12 @@ Measured against a 16 MHz SPI bus with the dirty-row diff in place:
 | Update | Rows written | SPI time |
 |---|---|---|
 | Nothing changed | 0 | 0 ms |
-| Clock ticks over | 8 / 320 | 3.8 ms |
+| Clock ticks over | 16 / 320 | 7.7 ms |
 | FREE → BUSY | 59 / 320 | 28 ms |
 | Countdown, per second | 59 / 320 | 28 ms |
 | First frame after boot | 320 / 320 | 154 ms |
 
 The loop wakes once a second when nothing is moving, and 8× a second only
 while something is animating — a `matrix` marquee, or the `mono` pulse if you
-turn it on. The `matrix` style costs roughly twice as much per update (18
-rows for a clock tick, 105 for FREE → BUSY) because the lattice lights far
-more pixels.
+turn it on. The `matrix` style costs roughly twice as much per update (105 rows for
+FREE → BUSY) because the lattice lights far more pixels.
