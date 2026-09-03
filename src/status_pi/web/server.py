@@ -132,6 +132,28 @@ def build_app(app_state):
             return _json({"error": str(exc)}, status=400)
         return _json(app_state.config.to_dict(redact_secrets=True))
 
+    @routes.get("/api/ha/calendars")
+    async def ha_calendars(request):
+        """List the calendar entities Home Assistant can see, so the UI can
+        offer them instead of asking the user to type an entity id."""
+        import aiohttp
+
+        ha = app_state.config.home_assistant
+        if not (ha.url and ha.token):
+            return _json({"error": "Home Assistant is not configured yet"}, status=400)
+        url = ha.url.rstrip("/") + "/api/calendars"
+        headers = {"Authorization": "Bearer %s" % ha.token}
+        try:
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 401:
+                        return _json({"error": "Home Assistant rejected the token"}, status=400)
+                    response.raise_for_status()
+                    return _json(await response.json())
+        except Exception as exc:  # noqa: BLE001
+            return _json({"error": str(exc)}, status=502)
+
     @routes.post("/api/calendar/refresh")
     async def refresh_calendar(request):
         app_state.calendar.refresh_soon()

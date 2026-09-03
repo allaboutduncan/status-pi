@@ -19,7 +19,7 @@ from .config import Config, default_state_dir
 from .render.fb import open_display
 from .render.screens import Renderer
 from .runtime import RuntimeState
-from .sources.cal import CalendarFeed
+from .sources.cal import make_calendar
 from .sources.ha import HomeAssistant
 from . import state as state_module
 
@@ -81,7 +81,7 @@ class StatusPi:
             self.config, simulate=simulate,
             preview_path=self.state_dir / "preview.png")
         self.ha = HomeAssistant(self.config, on_change=self.wake)
-        self.calendar = CalendarFeed(
+        self.calendar = make_calendar(
             self.config, tz=self.tz,
             cache_path=self.state_dir / "calendar.json", on_change=self.wake)
         self.watchdog = Watchdog()
@@ -169,20 +169,34 @@ class StatusPi:
     # -- used by the web UI ------------------------------------------------
     def apply_config(self, updates: dict) -> Config:
         """Validate, persist and hot-reload a config change without a restart."""
+        previous_provider = self.config.calendar.provider
         new_config = self.config.merge(updates)
         new_config.save()
         self.config = new_config
         self.tz = load_timezone(new_config.timezone)
         self.renderer = Renderer(new_config)
         self.ha.config = new_config
-        self.calendar.config = new_config
-        self.calendar.tz = self.tz
+        if new_config.calendar.provider != previous_provider:
+            asyncio.create_task(self._swap_calendar())
+        else:
+            self.calendar.config = new_config
+            self.calendar.tz = self.tz
         # Reconnect HA in case the URL, token or entity moved.
         asyncio.create_task(self._restart_ha())
         self.calendar.refresh_soon()
         self.state = None
         self.wake()
         return new_config
+
+    async def _swap_calendar(self) -> None:
+        """Tear down the old feed and build the one the new provider names."""
+        await self.calendar.stop()
+        self.calendar = make_calendar(
+            self.config, tz=self.tz,
+            cache_path=self.state_dir / "calendar.json", on_change=self.wake)
+        self.calendar.events = []
+        self.calendar.start()
+        self.wake()
 
     async def _restart_ha(self) -> None:
         await self.ha.stop()

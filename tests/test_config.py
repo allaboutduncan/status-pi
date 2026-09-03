@@ -68,6 +68,7 @@ def test_example_config_matches_the_schema():
     data = yaml.safe_load(example.read_text(encoding="utf-8"))
     config = Config.from_dict(data)
     assert config.home_assistant.busy_states == ["on"]
+    assert config.calendar.provider == "ics"
     assert config.calendar.needs_action_is_accepted is True
     assert config.web.port == 8080
     known = set(config.to_dict())

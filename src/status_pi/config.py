@@ -47,6 +47,15 @@ class HAConfig:
 
 @dataclass
 class CalendarConfig:
+    #: where meetings come from:
+    #:   "ics"  - a Google secret iCal URL (needs the Workspace admin to have
+    #:            enabled private iCal addresses)
+    #:   "ha"   - a calendar entity in Home Assistant, read over the
+    #:            connection we already hold open
+    #:   "none" - no calendar; the panel shows status, clock and timers only
+    provider: str = "ics"
+    #: which calendar entity to read when provider is "ha"
+    ha_entity: str = ""
     ics_url: str = ""
     email: str = ""
     refresh_seconds: int = 300
@@ -151,6 +160,11 @@ class Config:
 
     @property
     def calendar_configured(self) -> bool:
+        provider = (self.calendar.provider or "ics").lower()
+        if provider == "none":
+            return False
+        if provider == "ha":
+            return bool(self.calendar.ha_entity and self.ha_configured)
         return bool(self.calendar.ics_url)
 
 

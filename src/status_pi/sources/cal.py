@@ -119,9 +119,15 @@ def parse_ics(data, config, now: datetime, tz=timezone.utc):
     return events
 
 
-class CalendarFeed:
-    """Polls the .ics feed, caches the result, and keeps the last good copy
-    across restarts so a boot without network still shows something."""
+class BaseCalendarFeed:
+    """Polling, caching and health reporting, shared by every provider.
+
+    Subclasses only implement `fetch()`.  Keeping the last good copy on disk
+    means a boot with no network still shows this morning's meetings instead
+    of an empty panel.
+    """
+
+    name = "calendar"
 
     def __init__(self, config, tz=timezone.utc, cache_path=None, on_change=None):
         self.config = config
@@ -136,11 +142,15 @@ class CalendarFeed:
         self._stop = asyncio.Event()
         self._load_cache()
 
+    # -- to implement ------------------------------------------------------
+    async def fetch(self):
+        raise NotImplementedError
+
     # -- public ------------------------------------------------------------
     def start(self) -> None:
         if self._task is None or self._task.done():
             self._stop = asyncio.Event()
-            self._task = asyncio.create_task(self._run(), name="calendar")
+            self._task = asyncio.create_task(self._run(), name=self.name)
 
     async def stop(self) -> None:
         self._stop.set()
@@ -158,6 +168,7 @@ class CalendarFeed:
 
     def describe(self) -> dict:
         return {
+            "provider": self.config.calendar.provider,
             "configured": self.config.calendar_configured,
             "ok": self.ok,
             "events": len(self.events),
@@ -187,23 +198,14 @@ class CalendarFeed:
                 pass
 
     async def fetch_once(self) -> None:
-        import aiohttp
-
-        timeout = aiohttp.ClientTimeout(total=45)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(self.config.calendar.ics_url) as response:
-                response.raise_for_status()
-                data = await response.read()
-        now = datetime.now(self.tz)
-        events = await asyncio.get_running_loop().run_in_executor(
-            None, parse_ics, data, self.config, now, self.tz)
+        events = await self.fetch()
         changed = [(e.uid, e.start) for e in events] != [(e.uid, e.start) for e in self.events]
         self.events = events
         self.ok = True
         self.last_error = None
         self.last_fetch = time.time()
         self._save_cache()
-        log.info("calendar: %d events", len(events))
+        log.info("%s: %d events", self.name, len(events))
         if changed and self.on_change:
             self.on_change()
 
@@ -248,3 +250,124 @@ class CalendarFeed:
             os.replace(tmp, self.cache_path)
         except OSError as exc:
             log.debug("could not write calendar cache: %s", exc)
+
+
+class IcsCalendarFeed(BaseCalendarFeed):
+    """Google Calendar via its secret iCal address."""
+
+    name = "calendar(ics)"
+
+    async def fetch(self):
+        import aiohttp
+
+        timeout = aiohttp.ClientTimeout(total=45)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(self.config.calendar.ics_url) as response:
+                response.raise_for_status()
+                data = await response.read()
+        now = datetime.now(self.tz)
+        return await asyncio.get_running_loop().run_in_executor(
+            None, parse_ics, data, self.config, now, self.tz)
+
+
+class HACalendarFeed(BaseCalendarFeed):
+    """A calendar entity in Home Assistant, read over its REST API.
+
+    This is the way in when Google Workspace will not hand out a private iCal
+    address: whatever Home Assistant can see -- a Google account it holds
+    OAuth for, CalDAV, a local calendar -- the panel can show, using the same
+    URL and token we already have.
+
+    Home Assistant has already applied its own filtering by the time we see
+    these events, so there is no PARTSTAT to inspect here.
+    """
+
+    name = "calendar(ha)"
+
+    async def fetch(self):
+        import aiohttp
+
+        ha = self.config.home_assistant
+        entity = self.config.calendar.ha_entity
+        now = datetime.now(self.tz)
+        params = {
+            "start": (now - WINDOW_BEHIND).isoformat(),
+            "end": (now + WINDOW_AHEAD).isoformat(),
+        }
+        url = "%s/api/calendars/%s" % (ha.url.rstrip("/"), entity)
+        headers = {"Authorization": "Bearer %s" % ha.token}
+        timeout = aiohttp.ClientTimeout(total=30)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, headers=headers, params=params) as response:
+                if response.status == 404:
+                    raise RuntimeError("calendar entity %s does not exist" % entity)
+                response.raise_for_status()
+                payload = await response.json()
+        return self.parse(payload)
+
+    def parse(self, payload):
+        events = []
+        for item in payload or []:
+            start, start_all_day = self._moment(item.get("start"))
+            end, _ = self._moment(item.get("end"))
+            if start is None:
+                continue
+            if start_all_day and not self.config.calendar.include_all_day:
+                continue
+            if end is None or end <= start:
+                end = start + timedelta(minutes=30)
+            title = _text(item.get("summary"), "(no title)")
+            # Home Assistant does not promise a uid, so derive a stable one.
+            uid = _text(item.get("uid")) or "%s@%s" % (start.isoformat(), title)
+            if uid in (self.config.calendar.hidden_uids or []):
+                continue
+            events.append(Event(uid=uid, title=title, start=start, end=end,
+                                all_day=start_all_day, accepted=True))
+        events.sort(key=lambda e: e.start)
+        return events
+
+    def _moment(self, value):
+        """HA sends {"dateTime": ...} for timed events and {"date": ...} for
+        all-day ones.  Returns (datetime, is_all_day)."""
+        if not isinstance(value, dict):
+            return None, False
+        if value.get("dateTime"):
+            moment = datetime.fromisoformat(value["dateTime"])
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=self.tz)
+            return moment.astimezone(self.tz), False
+        if value.get("date"):
+            day = datetime.fromisoformat(value["date"])
+            return day.replace(tzinfo=self.tz), True
+        return None, False
+
+
+class NullCalendarFeed(BaseCalendarFeed):
+    """No calendar at all: the panel is a pure status board."""
+
+    name = "calendar(off)"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.events = []
+
+    def start(self) -> None:
+        return
+
+    async def stop(self) -> None:
+        return
+
+    async def fetch(self):
+        return []
+
+
+PROVIDERS = {"ics": IcsCalendarFeed, "ha": HACalendarFeed, "none": NullCalendarFeed}
+
+
+def make_calendar(config, tz=timezone.utc, cache_path=None, on_change=None):
+    """Build the feed named by `calendar.provider`, defaulting to iCal."""
+    provider = (config.calendar.provider or "ics").lower()
+    feed = PROVIDERS.get(provider, IcsCalendarFeed)
+    if provider not in PROVIDERS:
+        log.warning("unknown calendar provider %r, using ics", provider)
+    return feed(config, tz=tz, cache_path=cache_path, on_change=on_change)

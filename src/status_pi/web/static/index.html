@@ -72,6 +72,7 @@
     <span><span class="dot" id="ha-dot"></span>Home Assistant <b id="ha-text">--</b></span>
     <span><span class="dot" id="cal-dot"></span>Calendar <b id="cal-text">--</b></span>
   </div>
+  <div class="warn" id="ha-error" hidden></div>
   <div class="warn" id="warnings" hidden></div>
 </section>
 
@@ -156,8 +157,25 @@
     <input id="cfg-ha-states" placeholder="on">
 
     <h2 style="margin-top:18px">Calendar</h2>
-    <label for="cfg-ics">Secret iCal URL</label>
-    <input id="cfg-ics" type="password" placeholder="leave blank to keep">
+    <label for="cfg-provider">Where meetings come from</label>
+    <select id="cfg-provider" onchange="updateProviderFields()">
+      <option value="ics">Google secret iCal URL</option>
+      <option value="ha">A calendar in Home Assistant</option>
+      <option value="none">No calendar (status only)</option>
+    </select>
+    <div id="provider-ics">
+      <label for="cfg-ics">Secret iCal URL</label>
+      <input id="cfg-ics" type="password" placeholder="leave blank to keep">
+      <p class="hint">Google Calendar &rarr; Settings for my calendars &rarr; Integrate
+         calendar &rarr; Secret address in iCal format. On a work account this is
+         often hidden by your Workspace administrator.</p>
+    </div>
+    <div id="provider-ha" hidden>
+      <label for="cfg-ha-calendar">Calendar entity</label>
+      <select id="cfg-ha-calendar"><option value="">Loading...</option></select>
+      <p class="hint">Anything Home Assistant can see works here, so this is the way
+         in when your work account will not give out an iCal address.</p>
+    </div>
     <label for="cfg-email">Your email (for accepted-only filtering)</label>
     <input id="cfg-email" placeholder="you@example.com">
     <div class="row">
@@ -275,9 +293,15 @@ async function refresh() {
   $("preview").src = "/preview.png?t=" + Date.now();
 
   const ha = data.home_assistant;
-  $("ha-dot").className = "dot " + (ha.connected ? "ok" : (ha.configured ? "bad" : ""));
+  const haHealthy = ha.connected && !ha.entity_missing;
+  $("ha-dot").className = "dot " + (haHealthy ? "ok" : (ha.configured ? "bad" : ""));
   $("ha-text").textContent = !ha.configured ? "not configured"
+    : ha.entity_missing ? "entity not found"
     : ha.connected ? (ha.state + (data.state.mic_degraded ? " (stale)" : "")) : "disconnected";
+  // Say *why* it is unhappy -- "unreachable" on its own is useless when the
+  // cause is a rejected token or a mistyped entity id.
+  $("ha-error").textContent = haHealthy || !ha.configured ? "" : (ha.last_error || "");
+  $("ha-error").hidden = !$("ha-error").textContent;
   const cal = data.calendar;
   $("cal-dot").className = "dot " + (cal.ok ? "ok" : (cal.configured ? "bad" : ""));
   $("cal-text").textContent = !cal.configured ? "not configured"
@@ -306,7 +330,9 @@ async function loadConfig() {
   $("cfg-ha-url").value = c.home_assistant.url;
   $("cfg-ha-entity").value = c.home_assistant.entity;
   $("cfg-ha-states").value = (c.home_assistant.busy_states || []).join(", ");
+  $("cfg-provider").value = c.calendar.provider || "ics";
   $("cfg-email").value = c.calendar.email;
+  updateProviderFields(c.calendar.ha_entity);
   $("cfg-refresh").value = c.calendar.refresh_seconds;
   $("cfg-lookahead").value = c.calendar.lookahead_hours;
   $("cfg-allday").checked = c.calendar.include_all_day;
@@ -322,6 +348,35 @@ async function loadConfig() {
   $("cfg-quiet-clock").checked = c.display.quiet_hours.clock_only;
 }
 
+async function updateProviderFields(selected) {
+  const provider = $("cfg-provider").value;
+  $("provider-ics").hidden = provider !== "ics";
+  $("provider-ha").hidden = provider !== "ha";
+  if (provider !== "ha") return;
+  const picker = $("cfg-ha-calendar");
+  const wanted = selected !== undefined ? selected : picker.value;
+  let calendars;
+  try {
+    calendars = await get("/api/ha/calendars");
+  } catch (e) {
+    picker.innerHTML = "<option value=''>Home Assistant not reachable</option>";
+    return;
+  }
+  if (calendars.error || !calendars.length) {
+    picker.innerHTML = "<option value=''>" +
+      (calendars.error || "No calendars in Home Assistant") + "</option>";
+    return;
+  }
+  picker.innerHTML = "";
+  for (const calendar of calendars) {
+    const option = document.createElement("option");
+    option.value = calendar.entity_id;
+    option.textContent = (calendar.name || calendar.entity_id) + " (" + calendar.entity_id + ")";
+    picker.appendChild(option);
+  }
+  if (wanted) picker.value = wanted;
+}
+
 async function saveConfig() {
   const states = $("cfg-ha-states").value.split(",").map(s => s.trim()).filter(Boolean);
   await post("/api/config", {
@@ -333,6 +388,8 @@ async function saveConfig() {
       busy_states: states.length ? states : ["on"],
     },
     calendar: {
+      provider: $("cfg-provider").value,
+      ha_entity: $("cfg-ha-calendar").value,
       ics_url: $("cfg-ics").value.trim(),
       email: $("cfg-email").value.trim(),
       refresh_seconds: Number($("cfg-refresh").value) || 300,

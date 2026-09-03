@@ -16,6 +16,10 @@ def parse_args(argv=None):
                         help="render to PNG instead of the panel (development)")
     parser.add_argument("--probe", action="store_true",
                         help="report what the framebuffer looks like and exit")
+    parser.add_argument("--check-ha", action="store_true",
+                        help="test the Home Assistant link step by step and exit")
+    parser.add_argument("--watch", type=int, metavar="SECONDS", default=0,
+                        help="with --check-ha, stream entity changes for a while")
     parser.add_argument("--frames", metavar="DIR",
                         help="write one PNG per display state to DIR and exit")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -95,6 +99,13 @@ def main(argv=None) -> int:
     )
     if args.probe:
         return probe(args.config)
+    if args.check_ha:
+        import asyncio as _asyncio
+
+        from .config import Config
+        from .diagnose import check_ha
+
+        return _asyncio.run(check_ha(Config.load(args.config), watch=args.watch))
     if args.frames:
         return sample_frames(args.frames, args.config)
 

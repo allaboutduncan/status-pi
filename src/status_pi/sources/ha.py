@@ -43,6 +43,8 @@ class HomeAssistant:
         self.on_change = on_change
         self.connected = False
         self.state = None  # raw entity state string, e.g. "on"
+        #: connected, but the configured entity is not in Home Assistant
+        self.entity_missing = False
         self.last_change = None
         self.last_error = None
         self._task = None
@@ -81,6 +83,7 @@ class HomeAssistant:
             "entity": self.config.home_assistant.entity,
             "state": self.state,
             "mic_on": self.mic_on,
+            "entity_missing": self.entity_missing,
             "last_change": self.last_change,
             "last_error": self.last_error,
         }
@@ -135,7 +138,8 @@ class HomeAssistant:
                 await self._subscribe(ws, ha.entity)
                 await self._fetch_initial(session, ha)
                 self.connected = True
-                self.last_error = None
+                if not self.entity_missing:
+                    self.last_error = None
                 log.info("home assistant connected (%s)", url)
                 if self.on_change:
                     self.on_change()
@@ -164,14 +168,23 @@ class HomeAssistant:
             raise RuntimeError("subscribe failed: %s" % reply.get("error"))
 
     async def _fetch_initial(self, session, ha) -> None:
-        """The trigger only fires on change, so read the current value once."""
+        """The trigger only fires on change, so read the current value once.
+
+        A missing entity is reported, not raised: the subscription is valid
+        either way, and reconnecting in a loop would only hide the real
+        problem (usually a typo in the entity id)."""
         url = "%s/api/states/%s" % (ha.url.rstrip("/"), ha.entity)
         headers = {"Authorization": "Bearer %s" % ha.token}
         async with session.get(url, headers=headers) as response:
             if response.status == 404:
-                raise RuntimeError("entity %s does not exist" % ha.entity)
+                self.entity_missing = True
+                self.last_error = "entity %s does not exist" % ha.entity
+                log.warning("%s -- check Settings, or run --check-ha", self.last_error)
+                self._set_state(None)
+                return
             response.raise_for_status()
             payload = await response.json()
+        self.entity_missing = False
         self._set_state(payload.get("state"))
 
     def _handle(self, message: dict) -> None:

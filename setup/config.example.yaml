@@ -15,8 +15,20 @@ home_assistant:
     - "on"
 
 calendar:
-  # Google Calendar -> Settings for my calendars -> Integrate calendar ->
-  # "Secret address in iCal format".  Treat this like a password.
+  # Where meeting titles come from:
+  #   ics  - a Google Calendar secret iCal address (see ics_url below)
+  #   ha   - a calendar entity in Home Assistant, read over the connection we
+  #          already hold open.  Use this when a work Google account will not
+  #          give out a private iCal address -- that is an admin setting, off
+  #          by default in Workspace.
+  #   none - no calendar at all; BUSY/FREE, clock, statuses and timers only
+  provider: ics
+  # Used when provider is "ha".  Run `python -m status_pi --check-ha` to list
+  # the calendar entities Home Assistant can see.
+  ha_entity: ""
+  # Used when provider is "ics".  Google Calendar -> Settings for my calendars
+  # -> Integrate calendar -> "Secret address in iCal format".  Treat this like
+  # a password.
   ics_url: ""
   # Used to find your own ATTENDEE line so declined meetings can be dropped.
   email: ""

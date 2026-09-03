@@ -34,8 +34,8 @@ effectively zero, and a clock tick rewrites 17 KB of the panel rather than all
 4. Otherwise → **FREE**, with the next meeting you accepted
 
 Busy state comes from Home Assistant over a WebSocket, so the panel flips
-within a second of a call starting. Meeting titles come from the Google
-Calendar secret iCal URL. If Home Assistant goes away, the panel falls back to
+within a second of a call starting. Meeting titles come from a calendar source
+you choose (see below). If Home Assistant goes away, the panel falls back to
 "is a meeting happening right now?" and marks the mic indicator hollow rather
 than claiming FREE it cannot vouch for.
 
@@ -77,13 +77,56 @@ Settings. Nothing needs to be typed on the device itself.
 | Home Assistant URL | e.g. `http://homeassistant.local:8123` |
 | Long-lived token | HA → your profile → Security → Long-lived access tokens |
 | Camera/mic entity | the entity your existing camera-on automation triggers on |
-| Secret iCal URL | Google Calendar → Settings for my calendars → Integrate calendar → **Secret address in iCal format** |
-| Your email | the address that appears as `ATTENDEE` on your work invites |
+| Calendar source | one of the three options below |
+| Your email | the address that appears as `ATTENDEE` on your work invites (iCal only) |
 
-To find the entity: open your automation in Home Assistant, switch to **Edit in
-YAML**, and copy the `entity_id` from its state trigger. If that entity reports
+To find the entity, run the built-in check — it walks the network, the token
+and the entity in order, and lists likely candidates if the entity is wrong:
+
+```bash
+python -m status_pi --check-ha
+python -m status_pi --check-ha --watch 60   # then toggle your camera
+```
+
+Or open your automation in Home Assistant, switch to **Edit in YAML**, and copy
+the `entity_id` from its state trigger. If that entity reports
 something other than `on`/`off` (say `recording`), add that value to
 **States that mean busy**.
+
+## Where meetings come from
+
+`calendar.provider` picks one of three, switchable from Settings without a
+restart:
+
+**`ics` — a Google Calendar secret iCal address.** The simplest option, and
+the default. Google Calendar → Settings for my calendars → Integrate calendar
+→ *Secret address in iCal format*.
+
+If that section is missing on a work account, it is not you: private iCal
+addresses are a **Workspace admin setting**, off by default (Admin console →
+Apps → Google Workspace → Calendar → Sharing settings). If IT will turn it on,
+it takes up to 24 hours to appear, and nothing else here has to change. A
+calendar's *public* URL is no substitute — it only works if the calendar
+itself is public.
+
+**`ha` — a calendar entity in Home Assistant.** The way in when the answer
+from IT is no. Whatever Home Assistant can see becomes a source: a Google
+account it holds its own OAuth token for, CalDAV, Local Calendar, or the
+[ha-icalendar](https://github.com/codyc1515/ha-icalendar) custom integration.
+status-pi reads it over the URL and token it already has, so there is no
+second credential to manage. `--check-ha` lists the calendar entities
+available, and Settings offers them as a dropdown.
+
+Two routes worth trying, in order of how likely they are to survive a work
+policy: add the **Google Calendar** integration to Home Assistant and
+authorise it against the work account; or, if that is blocked, share the work
+calendar to a personal Google account and authorise *that* instead — the
+shared calendar shows up as its own entity. If the share is free/busy only you
+will get times without titles, which the panel still displays usefully.
+
+**`none` — no calendar.** BUSY/FREE, the clock, custom statuses and timers.
+Everything except meeting titles, the next-meeting line, and the calendar
+fallback used while Home Assistant is unreachable.
 
 The secret iCal URL is as sensitive as a password — anyone with it can read
 your calendar. It is stored in `/etc/status-pi/config.yaml`, mode 0640, owned
@@ -134,6 +177,7 @@ export PYTHONPATH=src
 python -m status_pi --frames ./frames    # one PNG per display state
 python -m status_pi --sim                # full app, panel rendered to PNG,
                                          # live at http://localhost:8080/preview.png
+python -m status_pi --check-ha           # diagnose the Home Assistant link
 python -m pytest tests -q
 ```
 
@@ -153,7 +197,8 @@ python -m status_pi --probe
 | `src/status_pi/render/screens.py` | the 480×320 layout |
 | `src/status_pi/render/fb.py` | RGB565 packing, dirty-row framebuffer writes |
 | `src/status_pi/sources/ha.py` | Home Assistant WebSocket subscription |
-| `src/status_pi/sources/cal.py` | iCal fetch, recurrence expansion, filtering |
+| `src/status_pi/sources/cal.py` | calendar providers: iCal, Home Assistant, none |
+| `src/status_pi/diagnose.py` | `--check-ha`, and finding your camera entity |
 | `src/status_pi/web/` | aiohttp control UI |
 | `src/status_pi/app.py` | the tick loop that ties it together |
 
@@ -170,14 +215,29 @@ kernel update ever breaks it, the fallback is a userspace ILI9486 driver over
 in the `dtoverlay=waveshare35a` line and reboot, or set `display.rotate: 180`
 in the config for a software flip.
 
-**BUSY never appears.** Check the Now panel: if Home Assistant shows
-*disconnected*, the token or URL is wrong (`journalctl -u status-pi -f` will
-say which). If it shows connected but the state never changes, the entity is
-wrong — verify with Developer Tools → States in Home Assistant.
+**Home Assistant shows unreachable / BUSY never appears.** Run the check —
+it tells you which step is failing rather than making you guess:
+
+```bash
+python -m status_pi --check-ha
+```
+
+`reachable` but `token rejected` means the long-lived token is wrong, expired
+or revoked; make a new one. `entity does not exist` prints the likeliest
+camera/microphone entities to use instead. If every step passes but the panel
+never flips, `--check-ha --watch 60` streams the entity while you toggle your
+camera — no changes there means the automation reacts to a different entity.
+The Now panel shows the same underlying error under the health dots.
 
 **A meeting shows that you declined.** Google's secret iCal feed is
 inconsistent about attendee status. Hide it with the × in Upcoming, or set
-`needs_action_is_accepted: false`.
+`needs_action_is_accepted: false`. (Filtering is Home Assistant's job under
+the `ha` provider, so this only applies to `ics`.)
+
+**"Secret address in iCal format" is missing from Google Calendar.** It is
+disabled by default on Workspace accounts and only your admin can turn it on.
+See [Where meetings come from](#where-meetings-come-from) for the two routes
+that do not need it.
 
 **Meetings are hours out of date.** That feed can also lag by a few hours.
 That is a Google-side limit, not a polling interval — the fix is to move
