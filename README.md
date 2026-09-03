@@ -254,9 +254,15 @@ or SPI being off (`dtparam=spi=on`). fbtft is deprecated upstream, so if a
 kernel update ever breaks it, the fallback is a userspace ILI9486 driver over
 `spidev` — only `render/fb.py` would change.
 
-**The panel is upside down on the wall.** Change `rotate=90` to `rotate=270`
-in the `dtoverlay=waveshare35a` line and reboot, or set `display.rotate: 180`
-in the config for a software flip.
+**The panel is upside down on the wall.** Settings → Display → Orientation →
+*Upside down (180°)*, then Save. It applies immediately, with no reboot, and
+costs about 0.1 ms per frame — the dirty-row diff still works, the changed
+band simply moves to the other end of the framebuffer.
+
+To flip it at the driver instead — which also turns the boot console the
+right way up — change `rotate=90` to `rotate=270` in the
+`dtoverlay=waveshare35a` line of `/boot/firmware/config.txt` and reboot. Do
+one or the other, not both, or they cancel out.
 
 **Home Assistant shows unreachable / BUSY never appears.** Run the check —
 it tells you which step is failing rather than making you guess:
