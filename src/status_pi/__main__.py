@@ -24,6 +24,8 @@ def parse_args(argv=None):
                         help="fetch the calendar and show what reaches the panel")
     parser.add_argument("--raw", action="store_true",
                         help="with --check-calendar, print the untouched response")
+    parser.add_argument("--test-pattern", action="store_true",
+                        help="draw a ruler on the panel to measure what the bezel hides")
     parser.add_argument("--frames", metavar="DIR",
                         help="write one PNG per display state to DIR and exit")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -44,6 +46,33 @@ def probe(config_path):
     if info["bpp"] != 16:
         print("warning: status-pi renders RGB565 and expects 16bpp")
         return 1
+    return 0
+
+
+def test_pattern(config_path, simulate=False):
+    """Put a ruler on the panel so the bezel can be measured, not guessed."""
+    from .config import Config, default_state_dir
+    from .render.calibrate import test_pattern as build
+    from .render.fb import open_display
+
+    config = Config.load(config_path)
+    display = open_display(config, simulate=simulate,
+                           preview_path=default_state_dir() / "preview.png")
+    image = build(config.display.width, config.display.height)
+    if config.display.rotate == 180:
+        image = image.rotate(180)
+    display.blit(image)
+    display.close()
+    print("Ruler drawn on %s." % type(display).__name__)
+    print()
+    print("Read the smallest number fully visible on each edge, then set those")
+    print("as the margins in Settings -> Display (or margin_left / margin_top /")
+    print("margin_right / margin_bottom in config.yaml).")
+    print()
+    print("Stop the service first, or it will paint over this:")
+    print("    sudo systemctl stop status-pi")
+    print("    sudo -u status-pi /opt/status-pi/venv/bin/python -m status_pi --test-pattern")
+    print("    sudo systemctl start status-pi")
     return 0
 
 
@@ -115,6 +144,8 @@ def main(argv=None) -> int:
         from .diagnose import check_ha
 
         return _asyncio.run(check_ha(Config.load(args.config), watch=args.watch))
+    if args.test_pattern:
+        return test_pattern(args.config, args.sim)
     if args.check_calendar:
         import asyncio as _asyncio
 

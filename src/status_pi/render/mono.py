@@ -201,6 +201,29 @@ class MonoRenderer:
     def _dim(self, color, state):
         return palette.dim(color, state.brightness)
 
+    @property
+    def box(self):
+        """The rectangle we may actually draw in: the design's 16px padding,
+        plus whatever the bezel covers on this particular panel."""
+        display = self.config.display
+        return (
+            PADDING + max(0, display.margin_left),
+            PADDING + max(0, display.margin_top),
+            self.width - PADDING - max(0, display.margin_right),
+            self.height - PADDING - max(0, display.margin_bottom),
+        )
+
+    @property
+    def centre_x(self) -> float:
+        """Centred within the visible area, not the framebuffer -- with an
+        uneven bezel those are not the same thing."""
+        left, _, right, _ = self.box
+        return (left + right) / 2
+
+    def _content_width(self) -> float:
+        left, _, right, _ = self.box
+        return right - left
+
     def tick(self, now: float) -> None:
         """Drive the pulse animation from the app's clock."""
         self._clock = now
@@ -213,7 +236,7 @@ class MonoRenderer:
     def _draw_header(self, draw, state, top: int) -> int:
         font = load(HEADER_SIZE)
         muted = self._dim(palette.INFO, state)
-        left, right = PADDING, self.width - PADDING
+        left, _, right, _ = self.box
 
         clock_w = tracked_width(state.clock, font, HEADER_TRACK)
         date_w = tracked_width(state.date, font, HEADER_TRACK)
@@ -240,7 +263,7 @@ class MonoRenderer:
     def _draw_centre(self, draw, state, top: float, bottom: float) -> None:
         context_font = load(CONTEXT_SIZE)
         headline_font, headline_h, tracking = fit_headline(
-            state.headline, self.width - 2 * PADDING)
+            state.headline, self._content_width())
 
         colour = self._dim(state.color, state)
         if self.config.display.pulse:
@@ -250,23 +273,24 @@ class MonoRenderer:
         # Nothing scrolls in this style: the headline shrinks to fit, and a
         # meeting title too wide for one line wraps onto a second.
         headline = ellipsize(state.headline, headline_font, tracking,
-                             self.width - 2 * PADDING)
+                             self._content_width())
         lines = wrap_lines(state.context, context_font, CONTEXT_TRACK,
-                           CONTEXT_MAX_WIDTH, CONTEXT_MAX_LINES)
+                           min(CONTEXT_MAX_WIDTH, self._content_width()),
+                           CONTEXT_MAX_LINES)
 
         glyph_h = context_font.getbbox("Ag")[3]
         context_h = (len(lines) - 1) * CONTEXT_LINE_HEIGHT + glyph_h if lines else 0
         block_h = headline_h + (HEADLINE_GAP + context_h if lines else 0)
         y = top + ((bottom - top) - block_h) / 2
 
-        x = (self.width - tracked_width(headline, headline_font, tracking)) / 2
+        x = self.centre_x - tracked_width(headline, headline_font, tracking) / 2
         draw_tracked(draw, (x, y), headline, headline_font, colour, tracking)
 
         if lines:
             y += headline_h + HEADLINE_GAP
             white = self._dim(palette.WHITE, state)
             for line in lines:
-                x = (self.width - tracked_width(line, context_font, CONTEXT_TRACK)) / 2
+                x = self.centre_x - tracked_width(line, context_font, CONTEXT_TRACK) / 2
                 draw_tracked(draw, (x, y), line, context_font, white, CONTEXT_TRACK)
                 y += CONTEXT_LINE_HEIGHT
 
@@ -275,9 +299,9 @@ class MonoRenderer:
             return
         font = load(SUBLINE_SIZE)
         colour = palette.TIMER if "timer" in state.subline.lower() else palette.INFO
-        text = ellipsize(state.subline, font, SUBLINE_TRACK, self.width - 2 * PADDING)
+        text = ellipsize(state.subline, font, SUBLINE_TRACK, self._content_width())
         height = font.getbbox("Ag")[3]
-        x = (self.width - tracked_width(text, font, SUBLINE_TRACK)) / 2
+        x = self.centre_x - tracked_width(text, font, SUBLINE_TRACK) / 2
         draw_tracked(draw, (x, bottom - height), text, font,
                      self._dim(colour, state), SUBLINE_TRACK)
 
@@ -289,15 +313,16 @@ class MonoRenderer:
 
         if state.clock_only:
             font = load(HEADLINE_SIZE, bold=True)
-            x = (self.width - tracked_width(state.clock, font, HEADLINE_TRACK)) / 2
-            y = (self.height - HEADLINE_SIZE) / 2
+            x = self.centre_x - tracked_width(state.clock, font, HEADLINE_TRACK) / 2
+            top, bottom = self.box[1], self.box[3]
+            y = top + ((bottom - top) - HEADLINE_SIZE) / 2
             draw_tracked(draw, (x, y), state.clock, font,
                          self._dim(palette.WHITE, state), HEADLINE_TRACK)
         else:
-            header_bottom = self._draw_header(draw, state, PADDING)
+            header_bottom = self._draw_header(draw, state, self.box[1])
             subline_font = load(SUBLINE_SIZE)
             subline_h = subline_font.getbbox("Ag")[3] if state.subline else 0
-            bottom = self.height - PADDING
+            bottom = self.box[3]
             self._draw_centre(draw, state, header_bottom, bottom - subline_h)
             self._draw_subline(draw, state, bottom)
 

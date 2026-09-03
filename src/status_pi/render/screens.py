@@ -69,7 +69,15 @@ class Renderer:
         self.config = config
         self.width = config.display.width
         self.height = config.display.height
-        self.grid = DotGrid((0, 0, self.width, self.height), PITCH, DOT)
+        display = config.display
+        # Same bezel inset as the mono style, so switching style does not
+        # move the content back under the frame.
+        self.grid = DotGrid((
+            max(0, display.margin_left),
+            max(0, display.margin_top),
+            self.width - max(0, display.margin_right),
+            self.height - max(0, display.margin_bottom),
+        ), PITCH, DOT)
         self.headline_marquee = Marquee(hold_ticks=10)
         self.context_marquee = Marquee(hold_ticks=10)
         self.subline_marquee = Marquee(hold_ticks=10)

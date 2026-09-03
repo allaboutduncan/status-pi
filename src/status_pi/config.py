@@ -102,6 +102,14 @@ class DisplayConfig:
     framebuffer: str = "/dev/fb1"
     width: int = 480
     height: int = 320
+    #: Extra inset, per side, for the part of the panel the bezel covers.
+    #: The framebuffer is the full 480x320 but the plastic frame overlaps a
+    #: few millimetres of it, and not evenly, so these are measured per
+    #: panel: run `python -m status_pi --test-pattern` and read them off.
+    margin_left: int = 0
+    margin_top: int = 0
+    margin_right: int = 0
+    margin_bottom: int = 0
     brightness: float = 1.0
     #: 0/180 flip the rendered image; use this if the ribbon ends up on the
     #: wrong side once the panel is on the wall.

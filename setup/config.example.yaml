@@ -64,6 +64,15 @@ display:
   width: 480
   height: 320
   brightness: 1.0
+  # The plastic frame overlaps part of the glass, unevenly and differently on
+  # every unit, so content near an edge can end up hidden. Run
+  #   python -m status_pi --test-pattern
+  # to put a ruler on the panel, then enter the smallest number fully visible
+  # on each edge here.
+  margin_left: 0
+  margin_top: 0
+  margin_right: 0
+  margin_bottom: 0
   # 180 flips the image if the panel ends up upside down on the wall.
   rotate: 0
   time_24h: true

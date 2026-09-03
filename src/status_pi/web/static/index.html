@@ -225,6 +225,23 @@
        measurable; to flip the boot console as well, change
        <code>dtoverlay=waveshare35a:rotate=90</code> to <code>rotate=270</code> in
        <code>/boot/firmware/config.txt</code> and reboot instead.</p>
+    <h2 style="margin-top:18px">Bezel margins</h2>
+    <p class="hint">The framebuffer is the full 480&times;320, but the plastic frame
+       overlaps some of the glass &mdash; unevenly, and differently on every unit. If
+       content is disappearing under the frame, run
+       <code>python -m status_pi --test-pattern</code> to put a ruler on the panel,
+       read the smallest number fully visible on each edge, and enter it here.</p>
+    <div class="row">
+      <div><label for="cfg-m-left">Left</label>
+           <input id="cfg-m-left" type="number" min="0" max="60"></div>
+      <div><label for="cfg-m-right">Right</label>
+           <input id="cfg-m-right" type="number" min="0" max="60"></div>
+      <div><label for="cfg-m-top">Top</label>
+           <input id="cfg-m-top" type="number" min="0" max="60"></div>
+      <div><label for="cfg-m-bottom">Bottom</label>
+           <input id="cfg-m-bottom" type="number" min="0" max="60"></div>
+    </div>
+
     <label><input type="checkbox" id="cfg-24h" style="width:auto"> 24-hour clock</label>
     <label><input type="checkbox" id="cfg-seconds" style="width:auto"> Show seconds</label>
     <label><input type="checkbox" id="cfg-pulse" style="width:auto"> Pulse the status word
@@ -370,6 +387,10 @@ async function loadConfig() {
   $("cfg-style").value = c.display.style || "mono";
   $("cfg-pulse").checked = c.display.pulse;
   $("cfg-bright").value = c.display.brightness;
+  $("cfg-m-left").value = c.display.margin_left;
+  $("cfg-m-right").value = c.display.margin_right;
+  $("cfg-m-top").value = c.display.margin_top;
+  $("cfg-m-bottom").value = c.display.margin_bottom;
   $("cfg-rotate").value = String(c.display.rotate);
   $("cfg-24h").checked = c.display.time_24h;
   $("cfg-seconds").checked = c.display.show_seconds;
@@ -434,6 +455,10 @@ async function saveConfig() {
       style: $("cfg-style").value,
       pulse: $("cfg-pulse").checked,
       brightness: Number($("cfg-bright").value) || 1,
+      margin_left: Number($("cfg-m-left").value) || 0,
+      margin_right: Number($("cfg-m-right").value) || 0,
+      margin_top: Number($("cfg-m-top").value) || 0,
+      margin_bottom: Number($("cfg-m-bottom").value) || 0,
       rotate: Number($("cfg-rotate").value),
       time_24h: $("cfg-24h").checked,
       show_seconds: $("cfg-seconds").checked,

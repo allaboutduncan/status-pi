@@ -254,6 +254,25 @@ or SPI being off (`dtparam=spi=on`). fbtft is deprecated upstream, so if a
 kernel update ever breaks it, the fallback is a userspace ILI9486 driver over
 `spidev` — only `render/fb.py` would change.
 
+**Content is hidden under the plastic frame.** The framebuffer is the full
+480×320, but the bezel overlaps some of the glass — unevenly, and differently
+on every unit, so the clock's first digit can sit behind the frame. Measure it
+rather than guessing:
+
+```bash
+sudo systemctl stop status-pi
+sudo -u status-pi /opt/status-pi/venv/bin/python -m status_pi --test-pattern
+sudo systemctl start status-pi
+```
+
+That draws nested labelled rectangles at 0, 5, 10, 15, 20 and 30 pixels, with
+every number repeated on all four edges. Read the smallest number *fully*
+visible on each edge and enter those under Settings → Display → Bezel margins
+(or `margin_left` / `margin_top` / `margin_right` / `margin_bottom` in
+`config.yaml`). The whole layout shifts inward by that much, and stays centred
+on the visible area rather than the framebuffer — which matters, because an
+uneven bezel makes those two different things.
+
 **The panel is upside down on the wall.** Settings → Display → Orientation →
 *Upside down (180°)*, then Save. It applies immediately, with no reboot, and
 costs about 0.1 ms per frame — the dirty-row diff still works, the changed
