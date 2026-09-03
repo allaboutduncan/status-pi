@@ -105,8 +105,8 @@
     <button class="primary" onclick="setStatus()">Set status</button>
     <button onclick="clearStatus()">Clear</button>
   </div>
-  <p class="hint">Up to 10 characters stay still on the panel; longer text scrolls.
-     An active microphone still overrides this with BUSY.</p>
+  <p class="hint">Short statuses get the full-size type; longer ones step down to
+     stay on one line. An active microphone still overrides this with BUSY.</p>
 </section>
 
 <section>
@@ -192,6 +192,11 @@
     <label><input type="checkbox" id="cfg-accepted" style="width:auto"> Only meetings I accepted</label>
 
     <h2 style="margin-top:18px">Display</h2>
+    <label for="cfg-style">Style</label>
+    <select id="cfg-style">
+      <option value="mono">Mono &mdash; large type on near-black</option>
+      <option value="matrix">Matrix &mdash; LED dot lattice</option>
+    </select>
     <div class="row">
       <div>
         <label for="cfg-bright">Brightness</label>
@@ -204,6 +209,9 @@
     </div>
     <label><input type="checkbox" id="cfg-24h" style="width:auto"> 24-hour clock</label>
     <label><input type="checkbox" id="cfg-seconds" style="width:auto"> Show seconds</label>
+    <label><input type="checkbox" id="cfg-pulse" style="width:auto"> Pulse the status word
+      <span class="hint">(mono only; redraws the biggest band ~8&times;/sec, about a
+      quarter of the panel's SPI bandwidth)</span></label>
 
     <h2 style="margin-top:18px">Quiet hours</h2>
     <label><input type="checkbox" id="cfg-quiet" style="width:auto"> Dim on a schedule</label>
@@ -337,6 +345,8 @@ async function loadConfig() {
   $("cfg-lookahead").value = c.calendar.lookahead_hours;
   $("cfg-allday").checked = c.calendar.include_all_day;
   $("cfg-accepted").checked = c.calendar.require_accepted;
+  $("cfg-style").value = c.display.style || "mono";
+  $("cfg-pulse").checked = c.display.pulse;
   $("cfg-bright").value = c.display.brightness;
   $("cfg-rotate").value = String(c.display.rotate);
   $("cfg-24h").checked = c.display.time_24h;
@@ -398,6 +408,8 @@ async function saveConfig() {
       require_accepted: $("cfg-accepted").checked,
     },
     display: {
+      style: $("cfg-style").value,
+      pulse: $("cfg-pulse").checked,
       brightness: Number($("cfg-bright").value) || 1,
       rotate: Number($("cfg-rotate").value),
       time_24h: $("cfg-24h").checked,

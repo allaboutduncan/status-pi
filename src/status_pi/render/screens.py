@@ -63,6 +63,8 @@ def fit_scale(text: str, cols: int, scales, rows: int = 7):
 class Renderer:
     """Stateful because the marquees remember where they have scrolled to."""
 
+    style = "matrix"
+
     def __init__(self, config):
         self.config = config
         self.width = config.display.width
@@ -185,3 +187,11 @@ class Renderer:
     def scrolling(self) -> bool:
         return any(m.animating for m in
                    (self.headline_marquee, self.context_marquee, self.subline_marquee))
+
+    @property
+    def animating(self) -> bool:
+        """This style animates only when text is too wide to sit still."""
+        return self.scrolling
+
+    def tick(self, now: float) -> None:
+        """No time-based animation here; the marquees step per frame."""

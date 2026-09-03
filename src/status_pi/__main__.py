@@ -50,14 +50,14 @@ def sample_frames(directory, config_path):
 
     from .config import Config
     from .events import Event
-    from .render.screens import Renderer
+    from .render import make_renderer
     from .runtime import CustomStatus, RuntimeState
     from . import state as state_module
 
     out = Path(directory)
     out.mkdir(parents=True, exist_ok=True)
     config = Config.load(config_path)
-    renderer = Renderer(config)
+    renderer = make_renderer(config)
     now = datetime(2026, 9, 1, 9, 41, tzinfo=timezone.utc)
     events = [
         Event("a", "Sprint Review", now - timedelta(minutes=11), now + timedelta(minutes=49)),

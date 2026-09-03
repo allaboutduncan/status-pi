@@ -82,6 +82,14 @@ class QuietHours:
 
 @dataclass
 class DisplayConfig:
+    #: how the panel looks:
+    #:   "mono"   - Roboto Mono on near-black, per the Claude design
+    #:   "matrix" - the original LED dot-matrix lattice
+    style: str = "mono"
+    #: gently pulse the status word (only in the mono style).  Off by
+    #: default: it redraws the largest band on the panel several times a
+    #: second, which is real traffic on a 16MHz SPI bus.
+    pulse: bool = False
     framebuffer: str = "/dev/fb1"
     width: int = 480
     height: int = 320

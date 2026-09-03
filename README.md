@@ -9,20 +9,43 @@ meeting?**
 
 ```
 ┌────────────────────────────────────────────┐
-│ 09:41                    Tue 1 Sep   ● ●   │
-│ ······································· │
+│ 09:41            Tue 1 Sep            ● ●  │   clock, date, health
 │                                            │
-│          ██████ ██  ██ ██████ ██  ██       │   BUSY / FREE / your own status
+│              ██████  ██  ██  ██            │
+│              ██  ██  ██  ██  ██            │   BUSY / FREE / your own status
+│              ██████  ██████  ██            │
 │                                            │
-│ Sprint Review - until 10:30                │   what you are actually in
-│ timer 12:34                                │   countdown, status expiry
+│        Sprint Review - until 10:30         │   what you are actually in
+│                 timer 12:34                │   countdown, status expiry
 └────────────────────────────────────────────┘
 ```
 
-Everything is drawn as an LED dot matrix straight into the Linux framebuffer.
-There is no browser, no X server and no desktop on the device: idle CPU is
-effectively zero, and a clock tick rewrites 17 KB of the panel rather than all
-300 KB.
+Drawn straight into the Linux framebuffer. There is no browser, no X server
+and no desktop on the device: idle CPU is effectively zero, and a clock tick
+rewrites 7 KB of the panel rather than all 300 KB.
+
+## How it looks
+
+`display.style` picks one of two, switchable from Settings:
+
+- **`mono`** (default) — Roboto Mono on a near-black ground: an 80px status
+  word, a muted header, a meeting line and a small tracked subline. This is
+  the [Claude design](https://claude.ai/design/p/2e3be59a-cb75-48eb-b496-b47365319c9d)
+  the panel is built to.
+- **`matrix`** — the original LED dot-matrix lattice, with scrolling marquees
+  for anything too wide.
+
+The status word is 80px for `BUSY`, `FREE` and countdowns; a longer custom
+status steps down through smaller sizes so it stays on one line rather than
+losing its second half to an ellipsis.
+
+`display.pulse` gently fades the status word in and out (mono only). It is off
+by default — it redraws the largest band on the panel about eight times a
+second, roughly a quarter of this panel's SPI bandwidth.
+
+Roboto Mono is bundled under the SIL Open Font License (`src/status_pi/fonts/`)
+so the device never needs a network or a particular apt package to draw its own
+screen.
 
 ## How it decides
 
@@ -145,9 +168,9 @@ by the service user, and is never sent back to the browser.
   iCal feed insists on showing
 - **Settings** — everything in `config.yaml`, applied without a restart
 
-Up to 10 characters stay still on the panel; anything longer scrolls, the way
-a real matrix does. Set `web.auth_token` if you would rather the UI were not
-open on the LAN.
+A custom status is capped at 24 characters, which is what the panel can show
+on one line at its smallest headline size. Set `web.auth_token` if you would
+rather the UI were not open on the LAN.
 
 ## Configuration
 
@@ -193,8 +216,9 @@ python -m status_pi --probe
 | Path | What it does |
 |---|---|
 | `src/status_pi/state.py` | the priority rules — the heart of the device |
+| `src/status_pi/render/mono.py` | the default typographic style |
 | `src/status_pi/render/matrix.py` | dot-matrix text, marquee scrolling |
-| `src/status_pi/render/screens.py` | the 480×320 layout |
+| `src/status_pi/render/screens.py` | the 480×320 dot-matrix layout |
 | `src/status_pi/render/fb.py` | RGB565 packing, dirty-row framebuffer writes |
 | `src/status_pi/sources/ha.py` | Home Assistant WebSocket subscription |
 | `src/status_pi/sources/cal.py` | calendar providers: iCal, Home Assistant, none |
@@ -255,10 +279,13 @@ Measured against a 16 MHz SPI bus with the dirty-row diff in place:
 | Update | Rows written | SPI time |
 |---|---|---|
 | Nothing changed | 0 | 0 ms |
-| Clock ticks over | 18 / 320 | 8.6 ms |
-| FREE → BUSY | 105 / 320 | 50 ms |
-| Countdown, per second | 84 / 320 | 40 ms |
+| Clock ticks over | 8 / 320 | 3.8 ms |
+| FREE → BUSY | 59 / 320 | 28 ms |
+| Countdown, per second | 59 / 320 | 28 ms |
 | First frame after boot | 320 / 320 | 154 ms |
 
-The loop wakes once a second when nothing is moving and 8× a second only
-while text is scrolling.
+The loop wakes once a second when nothing is moving, and 8× a second only
+while something is animating — a `matrix` marquee, or the `mono` pulse if you
+turn it on. The `matrix` style costs roughly twice as much per update (18
+rows for a clock tick, 105 for FREE → BUSY) because the lattice lights far
+more pixels.

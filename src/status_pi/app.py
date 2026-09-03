@@ -17,7 +17,7 @@ from pathlib import Path
 
 from .config import Config, default_state_dir
 from .render.fb import open_display
-from .render.screens import Renderer
+from .render import make_renderer
 from .runtime import RuntimeState
 from .sources.cal import make_calendar
 from .sources.ha import HomeAssistant
@@ -76,7 +76,7 @@ class StatusPi:
         self.state_dir = default_state_dir()
         self.tz = load_timezone(self.config.timezone)
         self.runtime = RuntimeState.load(self.state_dir / "runtime.json")
-        self.renderer = Renderer(self.config)
+        self.renderer = make_renderer(self.config)
         self.display = open_display(
             self.config, simulate=simulate,
             preview_path=self.state_dir / "preview.png")
@@ -116,11 +116,13 @@ class StatusPi:
         """Recompute, redraw if needed, push to the panel.  Returns True if
         anything reached the display."""
         new_state = self.compute()
+        self.renderer.tick(time.time())
         # A countdown changes its own headline, so the state key already
-        # catches it; only a marquee needs redrawing on an unchanged state.
+        # catches it; only an animation (a marquee, or the mono style's
+        # pulse) needs redrawing on an otherwise unchanged state.
         changed = self.state is None or new_state.key() != self.state.key()
         self.state = new_state
-        if not (changed or self.renderer.scrolling or force):
+        if not (changed or self.renderer.animating or force):
             return False
         image = self.renderer.render(new_state)
         self.rows_written += self.display.blit(image)
@@ -133,7 +135,7 @@ class StatusPi:
                 self.runtime.save()
             self.draw()
             self.watchdog.ping()
-            delay = FAST_TICK if self.renderer.scrolling else IDLE_TICK
+            delay = FAST_TICK if self.renderer.animating else IDLE_TICK
             try:
                 await asyncio.wait_for(self._wake.wait(), timeout=delay)
             except asyncio.TimeoutError:
@@ -174,7 +176,7 @@ class StatusPi:
         new_config.save()
         self.config = new_config
         self.tz = load_timezone(new_config.timezone)
-        self.renderer = Renderer(new_config)
+        self.renderer = make_renderer(new_config)
         self.ha.config = new_config
         if new_config.calendar.provider != previous_provider:
             asyncio.create_task(self._swap_calendar())
@@ -212,6 +214,7 @@ class StatusPi:
             "frames": self.frames,
             "display": {
                 "kind": type(self.display).__name__,
+                "style": getattr(self.renderer, "style", "mono"),
                 "device": getattr(self.display, "device", None),
                 "width": self.display.width,
                 "height": self.display.height,
