@@ -1,6 +1,6 @@
 [Unit]
 Description=status-pi wall status board
-Documentation=https://github.com/phillipduncan/status-pi
+Documentation=https://github.com/allaboutduncan/status-pi
 After=network-online.target
 Wants=network-online.target
 

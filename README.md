@@ -54,7 +54,7 @@ hostname (`status-pi`) and locale. Then, over SSH:
 sudo apt update
 sudo apt install -y git
 
-git clone https://github.com/<you>/status-pi.git
+git clone https://github.com/allaboutduncan/status-pi.git
 cd status-pi
 
 sudo ./setup/install-display.sh     # panel: overlay + config.txt
