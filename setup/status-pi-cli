@@ -1,0 +1,21 @@
+#!/bin/sh
+# Wrapper installed as /usr/local/bin/status-pi.
+#
+# `python -m status_pi` finds the package through the current directory, so
+# running it by hand from anywhere but /opt/status-pi fails with "No module
+# named status_pi". The service does not hit this because its unit sets
+# WorkingDirectory; a person at a prompt does. Setting PYTHONPATH explicitly
+# works regardless of where you are standing.
+set -e
+
+APP_DIR=/opt/status-pi
+PYTHON="$APP_DIR/venv/bin/python"
+
+[ -x "$PYTHON" ] || {
+    echo "status-pi is not installed at $APP_DIR (run setup/install.sh)" >&2
+    exit 1
+}
+
+PYTHONPATH="$APP_DIR${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec "$PYTHON" -m status_pi "$@"

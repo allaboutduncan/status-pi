@@ -42,6 +42,10 @@ fi
 chown -R "$SERVICE_USER:$SERVICE_USER" "$CONFIG_DIR" "$STATE_DIR" "$APP_DIR"
 chmod 0640 "$CONFIG_DIR/config.yaml"   # it holds the HA token and iCal URL
 
+echo "==> status-pi command"
+# So the diagnostics can be run from anywhere, not just /opt/status-pi.
+install -m 0755 "$SRC_DIR/setup/status-pi-cli" /usr/local/bin/status-pi
+
 echo "==> systemd unit"
 install -m 0644 "$SRC_DIR/setup/status-pi.service" /etc/systemd/system/status-pi.service
 systemctl daemon-reload
@@ -54,6 +58,12 @@ cat <<EOF
 
 Installed.  Next:
   1. Open http://$(hostname).local:8080 and fill in Settings
-     (Home Assistant URL + token + entity, and the secret iCal URL).
+     (Home Assistant URL + token + entity, and the calendar source).
   2. Watch it work:   journalctl -u status-pi -f
+
+Diagnostics, runnable from anywhere:
+  status-pi --check-ha         does the Home Assistant link work
+  status-pi --check-calendar   what the calendar returns
+  status-pi --test-pattern     a ruler, to measure what the bezel hides
+  status-pi --probe            what the framebuffer looks like
 EOF

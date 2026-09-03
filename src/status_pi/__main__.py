@@ -69,9 +69,9 @@ def test_pattern(config_path, simulate=False):
     print("as the margins in Settings -> Display (or margin_left / margin_top /")
     print("margin_right / margin_bottom in config.yaml).")
     print()
-    print("Stop the service first, or it will paint over this:")
+    print("The running service will paint over this, so:")
     print("    sudo systemctl stop status-pi")
-    print("    sudo -u status-pi /opt/status-pi/venv/bin/python -m status_pi --test-pattern")
+    print("    sudo -u status-pi status-pi --test-pattern")
     print("    sudo systemctl start status-pi")
     return 0
 

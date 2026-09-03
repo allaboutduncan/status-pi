@@ -14,6 +14,9 @@ SupplementaryGroups=video
 Environment=PYTHONUNBUFFERED=1
 Environment=STATUS_PI_CONFIG=/etc/status-pi/config.yaml
 Environment=STATUS_PI_STATE_DIR=/var/lib/status-pi
+# Belt and braces: WorkingDirectory already puts the package on sys.path,
+# but this keeps `python -m status_pi` working if that ever changes.
+Environment=PYTHONPATH=/opt/status-pi
 ExecStart=/opt/status-pi/venv/bin/python -m status_pi
 WorkingDirectory=/opt/status-pi
 Restart=always

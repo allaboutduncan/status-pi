@@ -112,8 +112,8 @@ To find the entity, run the built-in check — it walks the network, the token
 and the entity in order, and lists likely candidates if the entity is wrong:
 
 ```bash
-python -m status_pi --check-ha
-python -m status_pi --check-ha --watch 60   # then toggle your camera
+status-pi --check-ha
+status-pi --check-ha --watch 60   # then toggle your camera
 ```
 
 Or open your automation in Home Assistant, switch to **Edit in YAML**, and copy
@@ -223,12 +223,20 @@ python -m status_pi --check-calendar     # diagnose the calendar feed
 python -m pytest tests -q
 ```
 
-`--probe` reports what the framebuffer looks like on the device:
+### On the device
+
+`setup/install.sh` puts a `status-pi` command on the path, so the diagnostics
+run from anywhere:
 
 ```bash
-python -m status_pi --probe
-# /dev/fb1  480x320  16bpp  stride=960
+status-pi --probe            # /dev/fb1  480x320  16bpp  stride=960
+status-pi --check-ha         # does the Home Assistant link work
+status-pi --check-calendar   # what the calendar returns
+status-pi --test-pattern     # a ruler, to measure what the bezel hides
 ```
+
+`python -m status_pi` works too, but only from `/opt/status-pi` — the package
+is found through the current directory, which is why the wrapper exists.
 
 ### Layout of the code
 
@@ -261,7 +269,7 @@ rather than guessing:
 
 ```bash
 sudo systemctl stop status-pi
-sudo -u status-pi /opt/status-pi/venv/bin/python -m status_pi --test-pattern
+sudo -u status-pi status-pi --test-pattern
 sudo systemctl start status-pi
 ```
 
@@ -287,7 +295,7 @@ one or the other, not both, or they cancel out.
 it tells you which step is failing rather than making you guess:
 
 ```bash
-python -m status_pi --check-ha
+status-pi --check-ha
 ```
 
 `reachable` but `token rejected` means the long-lived token is wrong, expired
@@ -300,8 +308,8 @@ The Now panel shows the same underlying error under the health dots.
 **The calendar entity is listed but no meetings appear.** Run:
 
 ```bash
-python -m status_pi --check-calendar
-python -m status_pi --check-calendar --raw   # the untouched response
+status-pi --check-calendar
+status-pi --check-calendar --raw   # the untouched response
 ```
 
 It fetches through the same code path the app uses and shows what survives
